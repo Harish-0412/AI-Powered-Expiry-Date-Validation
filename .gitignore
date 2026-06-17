@@ -1,0 +1,7 @@
+Frontend/node_modules/
+Frontend/.next/
+
+# Editor and OS files
+*.swp
+.DS_Store
+
