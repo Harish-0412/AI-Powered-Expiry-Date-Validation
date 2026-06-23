@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+easyocr
+opencv-python
+python-dateutil
+numpy
+streamlit
+ultralytics
+plotly
+pandas
+python-multipart
