@@ -1,25 +1,9 @@
-from pydantic import BaseModel
-from typing import Optional
+"""
+schemas/product.py — Compatibility shim.
 
-class ProductBase(BaseModel):
-    sku: str
-    name: str
-    category: Optional[str] = None
-    barcode: Optional[str] = None
-    image_url: Optional[str] = None
+The canonical schemas are in product_schema.py.
+This file re-exports them so any existing import of
+`app.schemas.product` continues to work without changes.
+"""
 
-class ProductCreate(ProductBase):
-    pass
-
-class ProductUpdate(BaseModel):
-    name: Optional[str] = None
-    category: Optional[str] = None
-    barcode: Optional[str] = None
-    image_url: Optional[str] = None
-
-class ProductOut(ProductBase):
-    id: int
-
-    class Config:
-        orm_mode = True
-        from_attributes = True
+from app.schemas.product_schema import ProductCreate, ProductUpdate, ProductResponse  # noqa: F401

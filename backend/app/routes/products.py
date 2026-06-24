@@ -1,85 +1,88 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
-
-from app.config.database import get_db
-from app.models.product import Product
-from app.schemas.product import ProductCreate, ProductUpdate, ProductOut
+from app.database import get_db
+from app.schemas.product import ProductCreate, ProductUpdate, ProductResponse
+from app.schemas.common import SuccessResponse
+from app.services.product_service import (
+    get_product_by_id,
+    get_product_by_barcode,
+    create_product,
+    update_product,
+    list_products,
+)
+from app.utils.exceptions import (
+    ProductNotFoundError,
+    DuplicateBarcodeError,
+    DuplicateSKUError,
+)
+from app.utils.response import success_response, error_response
 
 router = APIRouter()
 
-@router.post("/", response_model=ProductOut, status_code=status.HTTP_201_CREATED)
-def create_product(product_in: ProductCreate, db: Session = Depends(get_db)):
-    # Check if SKU already exists
-    existing_sku = db.query(Product).filter(Product.sku == product_in.sku).first()
-    if existing_sku:
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+def create_product_endpoint(product_in: ProductCreate, db: Session = Depends(get_db)):
+    try:
+        product = create_product(db, product_in)
+        return success_response(ProductResponse.model_validate(product))
+    except DuplicateSKUError:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Product with SKU '{product_in.sku}' already exists."
+            status_code=status.HTTP_409_CONFLICT,
+            detail=error_response("SKU already exists", "DUPLICATE_SKU"),
+        )
+    except DuplicateBarcodeError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=error_response("Barcode already exists", "DUPLICATE_BARCODE"),
         )
 
-    # Check if barcode already exists
-    if product_in.barcode:
-        existing_barcode = db.query(Product).filter(Product.barcode == product_in.barcode).first()
-        if existing_barcode:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Product with barcode '{product_in.barcode}' already exists."
-            )
 
-    new_product = Product(
-        sku=product_in.sku,
-        name=product_in.name,
-        category=product_in.category,
-        barcode=product_in.barcode,
-        image_url=product_in.image_url
+@router.get("")
+def list_products_endpoint(
+    skip: int = 0, limit: int = 50, db: Session = Depends(get_db)
+):
+    products = list_products(db, skip, limit)
+    return success_response(
+        [ProductResponse.model_validate(p) for p in products]
     )
-    db.add(new_product)
-    db.commit()
-    db.refresh(new_product)
-    return new_product
 
-@router.get("/{product_id}", response_model=ProductOut)
-def get_product(product_id: int, db: Session = Depends(get_db)):
-    product = db.query(Product).filter(Product.id == product_id).first()
+
+@router.get("/{product_id}")
+def get_product_endpoint(product_id: int, db: Session = Depends(get_db)):
+    product = get_product_by_id(db, product_id)
     if not product:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Product with ID {product_id} not found."
+            detail=error_response("Product not found", "PRODUCT_NOT_FOUND"),
         )
-    return product
+    return success_response(ProductResponse.model_validate(product))
 
-@router.put("/{product_id}", response_model=ProductOut)
-def update_product(product_id: int, product_in: ProductUpdate, db: Session = Depends(get_db)):
-    product = db.query(Product).filter(Product.id == product_id).first()
+
+@router.get("/barcode/{barcode}")
+def get_product_by_barcode_endpoint(barcode: str, db: Session = Depends(get_db)):
+    product = get_product_by_barcode(db, barcode)
     if not product:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Product with ID {product_id} not found."
+            detail=error_response("Product not found", "PRODUCT_NOT_FOUND"),
         )
+    return success_response(ProductResponse.model_validate(product))
 
-    # If barcode is updated, verify uniqueness
-    if product_in.barcode:
-        existing_barcode = db.query(Product).filter(
-            Product.barcode == product_in.barcode,
-            Product.id != product_id
-        ).first()
-        if existing_barcode:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Product with barcode '{product_in.barcode}' already exists."
-            )
 
-    # Update only fields that are provided in the request
-    update_data = product_in.model_dump(exclude_unset=True) if hasattr(product_in, "model_dump") else product_in.dict(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(product, field, value)
-
-    db.commit()
-    db.refresh(product)
-    return product
-
-@router.get("/", response_model=List[ProductOut])
-def list_products(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
-    products = db.query(Product).offset(skip).limit(limit).all()
-    return products
+@router.put("/{product_id}")
+def update_product_endpoint(
+    product_id: int, product_in: ProductUpdate, db: Session = Depends(get_db)
+):
+    try:
+        product = update_product(db, product_id, product_in)
+        return success_response(ProductResponse.model_validate(product))
+    except ProductNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=error_response("Product not found", "PRODUCT_NOT_FOUND"),
+        )
+    except DuplicateBarcodeError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=error_response("Barcode already exists", "DUPLICATE_BARCODE"),
+        )

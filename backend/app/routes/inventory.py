@@ -1,49 +1,76 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from app.config.database import get_db
-from app.models.inventory import InventoryItem
-from app.models.product import Product
-from app.models.user import User
-from app.schemas.inventory import InventoryItemCreate, InventoryItemOut
-from app.services.auth import get_current_user
+from app.database import get_db
+from app.schemas.inventory import InventoryIntakeRequest, InventoryResponse
+from app.services.inventory_service import intake, get_item, list_items
+from app.utils.exceptions import ProductNotFoundError
+from app.utils.response import success_response, error_response
+from app.utils.constants import ACCEPTED, PRIORITY_SALE, REJECTED, MANUAL_REVIEW
 
 router = APIRouter()
 
-@router.post("/", response_model=InventoryItemOut, status_code=status.HTTP_201_CREATED)
-def create_inventory_item(
-    item_in: InventoryItemCreate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    # Verify product exists
-    product = db.query(Product).filter(Product.id == item_in.product_id).first()
-    if not product:
+
+@router.post("/intake", status_code=status.HTTP_201_CREATED)
+def intake_endpoint(data: InventoryIntakeRequest, db: Session = Depends(get_db)):
+    try:
+        item = intake(db, data)
+        return success_response(InventoryResponse.model_validate(item))
+    except ProductNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Product with ID {item_in.product_id} not found"
+            detail=error_response("Product not found for this barcode", "PRODUCT_NOT_FOUND"),
         )
-        
-    new_item = InventoryItem(
-        product_id=item_in.product_id,
-        batch_number=item_in.batch_number,
-        manufacturing_date=item_in.manufacturing_date,
-        expiry_date=item_in.expiry_date
-    )
-    db.add(new_item)
-    db.commit()
-    db.refresh(new_item)
-    return new_item
 
-@router.get("/{item_id}", response_model=InventoryItemOut)
-def get_inventory_item(
-    item_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+
+@router.get("")
+def list_inventory_endpoint(
+    skip: int = 0, limit: int = 50, db: Session = Depends(get_db)
 ):
-    item = db.query(InventoryItem).filter(InventoryItem.id == item_id).first()
+    items = list_items(db, skip=skip, limit=limit)
+    return success_response([InventoryResponse.model_validate(i) for i in items])
+
+
+# NOTE: All static string routes MUST be registered before /{item_id}
+# to prevent FastAPI from matching "accepted", "rejected", etc. as integers.
+
+@router.get("/accepted")
+def list_accepted_items(
+    skip: int = 0, limit: int = 50, db: Session = Depends(get_db)
+):
+    items = list_items(db, status=ACCEPTED, skip=skip, limit=limit)
+    return success_response([InventoryResponse.model_validate(i) for i in items])
+
+
+@router.get("/priority-sale")
+def list_priority_sale_items(
+    skip: int = 0, limit: int = 50, db: Session = Depends(get_db)
+):
+    items = list_items(db, status=PRIORITY_SALE, skip=skip, limit=limit)
+    return success_response([InventoryResponse.model_validate(i) for i in items])
+
+
+@router.get("/rejected")
+def list_rejected_items(
+    skip: int = 0, limit: int = 50, db: Session = Depends(get_db)
+):
+    items = list_items(db, status=REJECTED, skip=skip, limit=limit)
+    return success_response([InventoryResponse.model_validate(i) for i in items])
+
+
+@router.get("/manual-review")
+def list_manual_review_items(
+    skip: int = 0, limit: int = 50, db: Session = Depends(get_db)
+):
+    items = list_items(db, status=MANUAL_REVIEW, skip=skip, limit=limit)
+    return success_response([InventoryResponse.model_validate(i) for i in items])
+
+
+@router.get("/{item_id}")
+def get_inventory_item_endpoint(item_id: int, db: Session = Depends(get_db)):
+    item = get_item(db, item_id)
     if not item:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Inventory item with ID {item_id} not found"
+            detail=error_response("Inventory item not found", "INVENTORY_ITEM_NOT_FOUND"),
         )
-    return item
+    return success_response(InventoryResponse.model_validate(item))

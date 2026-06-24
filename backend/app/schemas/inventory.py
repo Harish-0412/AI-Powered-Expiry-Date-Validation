@@ -1,22 +1,12 @@
-from pydantic import BaseModel
-from datetime import date, datetime
-from typing import Optional
+"""
+schemas/inventory.py — Compatibility shim.
 
-class InventoryItemBase(BaseModel):
-    product_id: int
-    batch_number: Optional[str] = None
-    manufacturing_date: Optional[date] = None
-    expiry_date: Optional[date] = None
+Canonical schemas are in inventory_schema.py.
+Re-exports everything so existing imports continue to work.
+"""
 
-class InventoryItemCreate(InventoryItemBase):
-    pass
-
-class InventoryItemOut(InventoryItemBase):
-    id: int
-    intake_timestamp: datetime
-    current_status: str
-    decision_reason: Optional[str] = None
-
-    class Config:
-        orm_mode = True
-        from_attributes = True
+from app.schemas.inventory_schema import (  # noqa: F401
+    InventoryIntakeRequest,
+    InventoryResponse,
+    InventoryListResponse,
+)
