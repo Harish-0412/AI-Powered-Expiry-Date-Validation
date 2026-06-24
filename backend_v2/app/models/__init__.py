@@ -1,0 +1,21 @@
+"""
+models/__init__.py
+Import all models here so Base.metadata registers every table
+before create_all() or Alembic env.py inspects the schema.
+"""
+
+from app.models.product import Product
+from app.models.barcode_scan import BarcodeScan
+from app.models.product_image import ProductImage
+from app.models.ocr_result import OCRResult
+from app.models.inventory_item import InventoryItem
+from app.models.storage_context import StorageContext
+from app.models.ml_prediction import MLPrediction
+from app.models.manual_review import ManualReview
+from app.models.audit_log import AuditLog
+
+__all__ = [
+    "Product", "BarcodeScan", "ProductImage", "OCRResult",
+    "InventoryItem", "StorageContext", "MLPrediction",
+    "ManualReview", "AuditLog",
+]
