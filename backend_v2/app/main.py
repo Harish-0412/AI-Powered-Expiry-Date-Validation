@@ -19,6 +19,7 @@ from app.models import (  # noqa: F401
     InventoryItem, StorageContext, MLPrediction,
     ManualReview, AuditLog,
 )
+from app.routes.auth import router as auth_router
 
 
 @asynccontextmanager
@@ -43,6 +44,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register routers
+app.include_router(auth_router)
 
 
 @app.get("/health", tags=["health"])

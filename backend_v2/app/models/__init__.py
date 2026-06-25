@@ -13,9 +13,11 @@ from app.models.storage_context import StorageContext
 from app.models.ml_prediction import MLPrediction
 from app.models.manual_review import ManualReview
 from app.models.audit_log import AuditLog
+from app.models.user import User
 
 __all__ = [
     "Product", "BarcodeScan", "ProductImage", "OCRResult",
     "InventoryItem", "StorageContext", "MLPrediction",
     "ManualReview", "AuditLog",
+    "User",
 ]

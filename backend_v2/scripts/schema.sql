@@ -39,6 +39,22 @@ CREATE INDEX IF NOT EXISTS idx_products_category ON products (category);
 CREATE INDEX IF NOT EXISTS idx_products_brand    ON products (brand);
 
 -- =============================================================
+-- 0. users
+-- Application users for authentication
+-- =============================================================
+CREATE TABLE IF NOT EXISTS users (
+    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    email         VARCHAR(255) NOT NULL UNIQUE,
+    name          VARCHAR(255),
+    hashed_password TEXT       NOT NULL,
+    is_active     BOOLEAN     NOT NULL DEFAULT TRUE,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
+
+-- =============================================================
 -- 2. barcode_scans
 -- Records every barcode scanning event.
 -- A scan may or may not resolve to a known product.

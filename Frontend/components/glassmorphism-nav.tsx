@@ -16,6 +16,7 @@ export function GlassmorphismNav() {
   const [isOpen, setIsOpen] = useState(false)
   const [isVisible, setIsVisible] = useState(true)
   const [hasLoaded, setHasLoaded] = useState(false)
+  const [userName, setUserName] = useState<string | null>(null)
   const lastScrollY = useRef(0)
 
   useEffect(() => {
@@ -63,6 +64,14 @@ export function GlassmorphismNav() {
 
     return () => clearTimeout(timer)
   }, []) // Removed lastScrollY dependency to prevent infinite re-renders
+
+  useEffect(() => {
+    // load user name from localStorage to show welcome
+    if (typeof window !== "undefined") {
+      const name = localStorage.getItem("auth_user_name")
+      if (name) setUserName(name)
+    }
+  }, [])
 
   const scrollToTop = () => {
     console.log("[v0] Scrolling to top")
@@ -153,6 +162,25 @@ export function GlassmorphismNav() {
                 )}
               </div>
 
+              {/* Desktop Auth / CTA */}
+              <div className="hidden md:flex items-center space-x-4">
+                {userName ? (
+                  <div className="text-white/90 font-medium">Welcome, {userName}</div>
+                ) : (
+                  <>
+                    <Link href="/login" className="text-white/80 hover:text-white font-medium">
+                      Login
+                    </Link>
+                    <Link
+                      href="/signup"
+                      className="bg-white text-black font-medium px-4 py-2 rounded-full hover:shadow-md"
+                    >
+                      Sign up
+                    </Link>
+                  </>
+                )}
+              </div>
+
               {/* Desktop CTA Button */}
               <div className="hidden md:block">
                 <button
@@ -237,12 +265,36 @@ export function GlassmorphismNav() {
                   ),
                 )}
                 <div className="h-px bg-white/10 my-2" />
+                <Link
+                  href="/login"
+                  className={`text-white/80 hover:text-white hover:bg-white/10 rounded-lg px-3 py-3 text-left transition-all duration-300 font-medium cursor-pointer transform hover:scale-[1.02] hover:translate-x-1 ${
+                    isOpen ? "animate-mobile-menu-item" : ""
+                  }`}
+                  style={{
+                    animationDelay: isOpen ? `${navigation.length * 80 + 100}ms` : "0ms",
+                  }}
+                  onClick={() => setIsOpen(false)}
+                >
+                  Login
+                </Link>
+                <Link
+                  href="/signup"
+                  className={`text-white/80 hover:text-white hover:bg-white/10 rounded-lg px-3 py-3 text-left transition-all duration-300 font-medium cursor-pointer transform hover:scale-[1.02] hover:translate-x-1 ${
+                    isOpen ? "animate-mobile-menu-item" : ""
+                  }`}
+                  style={{
+                    animationDelay: isOpen ? `${(navigation.length + 1) * 80 + 120}ms` : "0ms",
+                  }}
+                  onClick={() => setIsOpen(false)}
+                >
+                  Sign up
+                </Link>
                 <button
                   className={`relative bg-white hover:bg-gray-50 text-black font-medium px-6 py-3 rounded-full flex items-center transition-all duration-300 hover:scale-105 hover:shadow-lg cursor-pointer group transform ${
                     isOpen ? "animate-mobile-menu-item" : ""
                   }`}
                   style={{
-                    animationDelay: isOpen ? `${navigation.length * 80 + 150}ms` : "0ms",
+                    animationDelay: isOpen ? `${(navigation.length + 2) * 80 + 150}ms` : "0ms",
                   }}
                   onClick={() => scrollToSection("#contact")}
                 >
