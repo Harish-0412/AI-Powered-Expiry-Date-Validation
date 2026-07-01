@@ -128,3 +128,80 @@ def log_audit_event(
         import logging
         logging.getLogger(__name__).warning(f"[AuditLog] Failed to write event {event_type}: {e}")
         return None
+
+
+def process_ocr_result(ocr_result: dict) -> dict:
+    """
+    Shim function for Sprint 4 & dev_tools compatibility.
+    Processes raw OCR text, runs date extraction, generates alerts, and returns the expected nested dict.
+    """
+    from app.services.date_extraction_service import extract_fields
+    
+    raw_text = ocr_result.get("raw_text", "")
+    confidence = ocr_result.get("confidence", 0.0)
+    
+    # Extract fields using Standalone Date Extractor under the hood
+    extracted = extract_fields(raw_text).to_dict()
+    
+    # Generate mock validation result for alert service
+    from app.schemas.validation_schema import ValidationResult, CategoryValidation, ValidationStatus
+    from app.schemas.alert_schema import Alert
+    
+    # Let's map validation status based on presence of fields
+    mfg_status = ValidationStatus.VALID if extracted.get("candidate_mfg_date") else ValidationStatus.WARNING
+    exp_status = ValidationStatus.VALID if extracted.get("candidate_expiry_date") else ValidationStatus.ERROR
+    ocr_status = ValidationStatus.VALID if confidence >= 0.8 else (ValidationStatus.WARNING if confidence >= 0.6 else ValidationStatus.ERROR)
+    
+    val_res = ValidationResult(
+        overall_score=100,
+        overall_status=ValidationStatus.VALID,
+        barcode=CategoryValidation(status=ValidationStatus.VALID, score=100, message="OK"),
+        product=CategoryValidation(status=ValidationStatus.VALID, score=100, message="OK"),
+        manufacturing=CategoryValidation(status=mfg_status, score=100 if mfg_status == ValidationStatus.VALID else 50, message="Mfg Date"),
+        expiry=CategoryValidation(status=exp_status, score=100 if exp_status == ValidationStatus.VALID else 0, message="Expiry Date"),
+        pricing=CategoryValidation(status=ValidationStatus.VALID, score=100, message="OK"),
+        ocr=CategoryValidation(status=ocr_status, score=int(confidence*100), message="OCR")
+    )
+    
+    # Generate alerts using our service
+    from app.services.alert_service import AlertService
+    alerts_obj = AlertService().generate_alerts(val_res)
+    
+    # Format alerts for the test framework which expects list of {"code": ..., "detail": ...}
+    formatted_alerts = []
+    for a in alerts_obj.alerts:
+        formatted_alerts.append({
+            "code": a.code,
+            "detail": a.message
+        })
+        
+    # Build nested result dict expected by test_extraction.py
+    def make_val(val):
+        return {"value": val} if val else None
+        
+    all_dates = []
+    if extracted.get("candidate_mfg_date"): all_dates.append(extracted["candidate_mfg_date"])
+    if extracted.get("candidate_expiry_date"): all_dates.append(extracted["candidate_expiry_date"])
+    if extracted.get("candidate_pkd_date"): all_dates.append(extracted["candidate_pkd_date"])
+    if extracted.get("candidate_best_before"): all_dates.append(extracted["candidate_best_before"])
+        
+    return {
+        "manufacturing_information": {
+            "mfg_date": make_val(extracted.get("candidate_mfg_date")),
+            "pkd_date": make_val(extracted.get("candidate_pkd_date")),
+            "batch": make_val(extracted.get("candidate_batch")),
+            "lot": make_val(extracted.get("candidate_lot"))
+        },
+        "expiry_information": {
+            "expiry_date": make_val(extracted.get("candidate_expiry_date")),
+            "best_before": make_val(extracted.get("candidate_best_before"))
+        },
+        "pricing_information": {
+            "mrp": make_val(extracted.get("candidate_mrp"))
+        },
+        "ocr_information": {
+            "confidence": confidence,
+            "all_dates_found": all_dates
+        },
+        "alerts": formatted_alerts
+    }

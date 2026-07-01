@@ -122,6 +122,7 @@ class WebcamScanner:
             ("Manufacturing Date:", result.mfg_date),
             ("Expiry Date:", result.expiry_date),
             ("Batch Number:", result.batch_number),
+            ("Ingredients:", result.ingredients),
             ("Confidence:", f"{result.confidence:.2f}" if result.confidence else "N/A"),
             ("Used Vision LLM:", "Yes" if result.used_vision_llm else "No"),
         ]
@@ -134,7 +135,11 @@ class WebcamScanner:
             # Value
             if value:
                 color = COLOR_GREEN if (label == "Manufacturing Date:" or label == "Expiry Date:") else COLOR_WHITE
-                cv2.putText(display, value, (600, y_pos + 30), 
+                # Truncate ingredients if too long to prevent overflowing screen
+                val_str = value
+                if label == "Ingredients:" and len(value) > 40:
+                    val_str = value[:37] + "..."
+                cv2.putText(display, val_str, (600, y_pos + 30), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
             else:
                 cv2.putText(display, "Not Detected", (600, y_pos + 30), 

@@ -18,6 +18,7 @@ class ExtractedDates:
     mfg_date: Optional[str] = None
     expiry_date: Optional[str] = None
     batch_number: Optional[str] = None
+    ingredients: Optional[str] = None
     confidence: float = 0.0
     raw_text: str = ""
 
@@ -97,6 +98,9 @@ class StandaloneDateExtractor:
         
         # Extract batch number
         extracted.batch_number = StandaloneDateExtractor._extract_batch(clean_text)
+        
+        # Extract ingredients
+        extracted.ingredients = StandaloneDateExtractor._extract_ingredients(clean_text)
         
         # Find all dates in text
         all_dates = StandaloneDateExtractor._find_all_dates(clean_text)
@@ -279,6 +283,24 @@ class StandaloneDateExtractor:
             match = pattern.search(text)
             if match:
                 return match.group(1).strip()
+        return None
+        
+    @staticmethod
+    def _extract_ingredients(text: str) -> Optional[str]:
+        """Extract ingredients list using common keywords"""
+        pattern = re.compile(r'\b(?:INGREDIENTS|INGREDIENT|CONTAINS)\s*[:\-]?\s*(.+)', re.IGNORECASE)
+        match = pattern.search(text)
+        if match:
+            ingredients_text = match.group(1).strip()
+            # Stop if another major header is found
+            stop_headers = ['MFG', 'MFD', 'EXP', 'BATCH', 'B. NO', 'BEST BEFORE', 'BB', 'MRP', 'PRICE', 'WEIGHT', 'NET QTY']
+            for header in stop_headers:
+                header_pos = ingredients_text.upper().find(header)
+                if header_pos != -1:
+                    ingredients_text = ingredients_text[:header_pos].strip()
+            # Remove trailing non-alphanumeric punctuation
+            ingredients_text = re.sub(r'[\s,.:\-]+$', '', ingredients_text)
+            return ingredients_text if ingredients_text else None
         return None
     
     @staticmethod

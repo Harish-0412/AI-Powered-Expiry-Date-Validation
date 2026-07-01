@@ -12,6 +12,7 @@ import json
 import base64
 import logging
 import mimetypes
+from datetime import date, datetime
 from typing import Optional
 from pydantic import BaseModel, Field
 
@@ -20,10 +21,10 @@ logger = logging.getLogger(__name__)
 # ── Pydantic Schema ───────────────────────────────────────────────────────────
 
 class StructuredExtractionResult(BaseModel):
-    mfg_date: Optional[str] = Field(
+    mfg_date: Optional[date] = Field(
         None, description="The manufacturing date in YYYY-MM-DD format."
     )
-    expiry_date: Optional[str] = Field(
+    expiry_date: Optional[date] = Field(
         None, description="The expiration or best-before date in YYYY-MM-DD format."
     )
     batch_number: Optional[str] = Field(
@@ -38,6 +39,12 @@ class StructuredExtractionResult(BaseModel):
     product_name: Optional[str] = Field(
         None, description="Estimated brand or name of the product."
     )
+    category: Optional[str] = Field(
+        None, description="Category of the product (e.g., Dairy, Bakery, Beverages, etc.)."
+    )
+    ingredients: Optional[str] = Field(
+        None, description="The list of ingredients of the product."
+    )
     confidence_score: float = Field(
         ..., description="Estimated confidence score of the OCR extraction between 0.0 and 1.0."
     )
@@ -49,30 +56,58 @@ class StructuredExtractionResult(BaseModel):
 # ── Vision Prompt Builder ─────────────────────────────────────────────────────
 
 def build_vision_prompt(is_crop: bool) -> str:
+    # Guidelines on parsing dates
+    date_guidelines = (
+        "IMPORTANT FOR DATES:\n"
+        "1. The date format on the packaging is typically in DD/MM/YY or DD/MM/YYYY format. "
+        "Parse numbers in the order: Day/Month/Year. "
+        "For example, '09/03/26' means 9th of March 2026. '08/12/26' means 8th of December 2026. Do NOT parse them as MM/DD/YY.\n"
+        "2. If no absolute expiry date is printed but a relative shelf-life is shown (e.g. 'best before 9 months' or 'use within 180 days'), "
+        "leave 'expiry_date' as null and set 'shelf_life_days' accordingly (e.g. 9 months = 270 days).\n"
+        "3. Output all parsed dates strictly in 'YYYY-MM-DD' format."
+    )
+    
     if is_crop:
         return (
-            "This is a cropped close-up of a product label showing manufacturing "
-            "and/or expiry date text. It may be dot-matrix or inkjet printed.\n"
-            "If no absolute expiry date is printed but a relative shelf-life rule is shown "
-            "(e.g. 'best before 90 days' or 'shelf life 6 months'), leave 'expiry_date' as null and "
-            "extract the number of days into 'shelf_life_days' (e.g. 6 months = 180 days).\n"
+            "This is a cropped close-up of a product label showing dates, batch, or other text.\n"
+            f"{date_guidelines}\n"
+            "Extract mfg_date, expiry_date, batch_number, ingredients, category.\n"
             "Return ONLY a valid JSON object matching this schema:\n"
-            "{\"mfg_date\": \"YYYY-MM-DD or null\", \"expiry_date\": null, "
-            "\"batch_number\": \"string or null\", \"mrp\": null, \"weight\": null, "
-            "\"product_name\": null, \"confidence_score\": 0.0, \"shelf_life_days\": 90}\n"
+            "{\n"
+            "  \"mfg_date\": \"YYYY-MM-DD or null\",\n"
+            "  \"expiry_date\": \"YYYY-MM-DD or null\",\n"
+            "  \"batch_number\": \"string or null\",\n"
+            "  \"mrp\": null,\n"
+            "  \"weight\": null,\n"
+            "  \"product_name\": null,\n"
+            "  \"category\": \"string or null\",\n"
+            "  \"ingredients\": \"string or null\",\n"
+            "  \"confidence_score\": 0.0,\n"
+            "  \"shelf_life_days\": null\n"
+            "}\n"
             "Return ONLY the JSON, no markdown, no explanation."
         )
     else:
         return (
-            "This is a full product label photo. Locate and extract dates and batch.\n"
-            "If no absolute expiry date is printed but a relative shelf-life rule is shown "
-            "(e.g. 'best before 90 days' or 'use within 12 months'), leave 'expiry_date' as null and "
-            "extract the number of days into 'shelf_life_days' (e.g. 90 days = 90, 1 year = 365).\n"
+            "This is a full product packaging photo.\n"
+            f"{date_guidelines}\n"
+            "Additional extraction instructions:\n"
+            "- Brand and Product Name: Look at the brand logo (e.g. 'Happilo' at the top) and the product description (e.g. 'Dates'). Combine them, e.g. 'Happilo Dates'.\n"
+            "- Ingredients: Look for the 'INGREDIENTS:' section (e.g. 'INGREDIENTS: Dates.') and extract it.\n"
+            "- Category: Classify the product (e.g. 'Dry Fruits', 'Dairy', 'Snacks', etc.).\n"
             "Return ONLY a valid JSON object matching this schema:\n"
-            "{\"mfg_date\": \"YYYY-MM-DD or null\", \"expiry_date\": null, "
-            "\"batch_number\": \"string or null\", \"mrp\": \"number or null\", "
-            "\"weight\": \"string or null\", \"product_name\": \"string or null\", "
-            "\"confidence_score\": 0.0, \"shelf_life_days\": 90}\n"
+            "{\n"
+            "  \"mfg_date\": \"YYYY-MM-DD or null\",\n"
+            "  \"expiry_date\": \"YYYY-MM-DD or null\",\n"
+            "  \"batch_number\": \"string or null\",\n"
+            "  \"mrp\": 0.0,\n"
+            "  \"weight\": \"string or null\",\n"
+            "  \"product_name\": \"string or null\",\n"
+            "  \"category\": \"string or null\",\n"
+            "  \"ingredients\": \"string or null\",\n"
+            "  \"confidence_score\": 0.0,\n"
+            "  \"shelf_life_days\": null\n"
+            "}\n"
             "Return ONLY the JSON, no markdown, no explanation."
         )
 
@@ -82,24 +117,43 @@ def build_vision_prompt(is_crop: bool) -> str:
 def _extract_via_gemini(
     image_bytes: bytes, mime_type: str, api_key: str, is_crop: bool = False
 ) -> StructuredExtractionResult:
-    """Invokes Gemini 1.5 Flash via prompt-driven JSON output (no response_schema)."""
+    """Invokes Gemini Vision via prompt-driven JSON output with retry and model fallback."""
     import google.generativeai as genai
+    import time
 
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.0-flash-lite")
-
     image_part = {"mime_type": mime_type, "data": image_bytes}
-
     prompt = build_vision_prompt(is_crop)
 
-    response = model.generate_content(
-        [prompt, image_part],
-        generation_config=genai.types.GenerationConfig(temperature=0.05)
-    )
+    # Try multiple models in order of preference (lite is cheaper but may hit quota first)
+    models_to_try = ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-2.5-flash"]
+    last_error = None
 
-    text = response.text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
-    data = json.loads(text)
-    return StructuredExtractionResult.model_validate(data)
+    for model_name in models_to_try:
+        for attempt in range(3):
+            try:
+                model = genai.GenerativeModel(model_name)
+                response = model.generate_content(
+                    [prompt, image_part],
+                    generation_config=genai.types.GenerationConfig(temperature=0.05)
+                )
+                text = response.text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+                data = json.loads(text)
+                logger.info(f"[VisionLLM] Gemini extraction succeeded with model={model_name} on attempt {attempt+1}")
+                return StructuredExtractionResult.model_validate(data)
+            except Exception as e:
+                last_error = e
+                error_str = str(e)
+                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str or "quota" in error_str.lower():
+                    wait = min(2 ** attempt * 5, 30)
+                    logger.warning(f"[VisionLLM] Quota exhausted for {model_name} (attempt {attempt+1}), waiting {wait}s before retry...")
+                    time.sleep(wait)
+                    continue  # retry same model
+                else:
+                    logger.warning(f"[VisionLLM] Model {model_name} failed (non-quota): {e}")
+                    break  # try next model
+
+    raise last_error if last_error else RuntimeError("All Gemini models exhausted")
 
 
 def _extract_via_openai(
@@ -141,9 +195,11 @@ def _extract_via_openai(
 # ── Text-Only LLM Parsers (Stage 2: PaddleOCR text → structured JSON) ────────
 
 TEXT_PARSE_PROMPT = (
-    "You are an expert at parsing product label text. "
-    "From the raw OCR text below, extract: mfg_date, expiry_date, batch_number, mrp, weight, product_name.\n"
+    "You are an expert at parsing product label text.\n"
+    "From the raw OCR text below, extract: mfg_date, expiry_date, batch_number, mrp, weight, product_name, category, ingredients.\n"
     "Convert all dates to strict ISO 8601 YYYY-MM-DD format.\n"
+    "IMPORTANT: Dates on the package are typically in DD/MM/YY or DD/MM/YYYY format. Parse them as Day/Month/Year. "
+    "For example, '09/03/26' means 9th of March 2026. '08/12/26' means 8th of December 2026.\n"
     "If no absolute expiry date is printed but a relative shelf-life rule is shown (e.g. 'best before 90 days'), "
     "leave 'expiry_date' null and return the parsed duration in days under 'shelf_life_days' (e.g. 90). "
     "Set confidence_score between 0.0 and 1.0 based on how complete and clear the data is.\n\n"
@@ -152,20 +208,41 @@ TEXT_PARSE_PROMPT = (
 
 
 def _parse_text_via_gemini(raw_text: str, api_key: str) -> StructuredExtractionResult:
-    """Send raw OCR text to Gemini via prompt-driven JSON output."""
+    """Send raw OCR text to Gemini via prompt-driven JSON output with retry and model fallback."""
     import google.generativeai as genai
+    import time
 
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.0-flash-lite")
+    prompt = TEXT_PARSE_PROMPT.format(raw_text=raw_text)
 
-    response = model.generate_content(
-        TEXT_PARSE_PROMPT.format(raw_text=raw_text),
-        generation_config=genai.types.GenerationConfig(temperature=0.05)
-    )
+    models_to_try = ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-2.5-flash"]
+    last_error = None
 
-    text = response.text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
-    data = json.loads(text)
-    return StructuredExtractionResult.model_validate(data)
+    for model_name in models_to_try:
+        for attempt in range(3):
+            try:
+                model = genai.GenerativeModel(model_name)
+                response = model.generate_content(
+                    prompt,
+                    generation_config=genai.types.GenerationConfig(temperature=0.05)
+                )
+                text = response.text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+                data = json.loads(text)
+                logger.info(f"[TextLLM] Gemini text parse succeeded with model={model_name} on attempt {attempt+1}")
+                return StructuredExtractionResult.model_validate(data)
+            except Exception as e:
+                last_error = e
+                error_str = str(e)
+                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str or "quota" in error_str.lower():
+                    wait = min(2 ** attempt * 5, 30)
+                    logger.warning(f"[TextLLM] Quota exhausted for {model_name} (attempt {attempt+1}), waiting {wait}s...")
+                    time.sleep(wait)
+                    continue
+                else:
+                    logger.warning(f"[TextLLM] Model {model_name} failed: {e}")
+                    break
+
+    raise last_error if last_error else RuntimeError("All Gemini models exhausted")
 
 
 def _parse_text_via_openai(raw_text: str, api_key: str) -> StructuredExtractionResult:
