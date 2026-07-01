@@ -1,10 +1,26 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from typing import Optional, Any
 from app.schemas.product_intelligence_schema import (
     ProductIntelligence, ScanInfo, BarcodeInfo, ProductInfo,
     ManufacturingInfo, ExpiryInfo, PricingInfo, BatchInfo, OcrInfo, MetadataInfo, LookupMetadata
 )
+
+def parse_date_safe(val) -> Optional[date]:
+    if not val:
+        return None
+    if isinstance(val, date) and not isinstance(val, datetime):
+        return val
+    if isinstance(val, datetime):
+        return val.date()
+    val_str = str(val).strip()
+    # Try common formats
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%Y/%m/%d", "%d-%m-%Y", "%Y-%m"):
+        try:
+            return datetime.strptime(val_str, fmt).date()
+        except ValueError:
+            continue
+    return None
 
 class ProductIntelligenceService:
     def build_product_profile(
@@ -31,6 +47,25 @@ class ProductIntelligenceService:
             barcode_info.product_code = getattr(barcode_data, 'product_code', None)
             barcode_info.check_digit = getattr(barcode_data, 'check_digit', None)
             barcode_info.checksum_valid = getattr(barcode_data, 'checksum_valid', None)
+            
+            # Supplier Grade Lookup (Request 3)
+            SUPPLIER_LOOKUP = {
+                "1234": "A",
+                "5678": "B",
+                "9012": "C",
+                "3456": "D",
+                "0412": "A",
+                "007": "A",
+                "8901": "A",
+                "1058": "A",
+                "6081": "A",
+            }
+            if barcode_info.manufacturer_code:
+                barcode_info.supplier_grade = SUPPLIER_LOOKUP.get(barcode_info.manufacturer_code, "C")
+            else:
+                barcode_info.supplier_grade = "C"
+        else:
+            barcode_info.supplier_grade = "C"
 
         # Product parsing
         product_info = ProductInfo()
@@ -74,11 +109,11 @@ class ProductIntelligenceService:
             bc_lot    = getattr(barcode_data, 'lot_number', None)
 
             if bc_mfg:
-                manufacturing_info.manufacturing_date = str(bc_mfg)
+                manufacturing_info.manufacturing_date = parse_date_safe(bc_mfg)
             if bc_expiry:
-                expiry_info.expiry_date = str(bc_expiry)
+                expiry_info.expiry_date = parse_date_safe(bc_expiry)
             if bc_bb:
-                expiry_info.best_before_date = str(bc_bb)
+                expiry_info.best_before_date = parse_date_safe(bc_bb)
             if bc_batch:
                 batch_info.batch_number = bc_batch
                 batch_info.lot_number = bc_lot or bc_batch
@@ -88,16 +123,22 @@ class ProductIntelligenceService:
             if isinstance(ocr_data, dict):
                 detected_fields = ocr_data.get('detected_fields', {})
                 if not manufacturing_info.manufacturing_date:
-                    manufacturing_info.manufacturing_date = detected_fields.get('mfg_date') or ocr_data.get('mfg_date')
+                    manufacturing_info.manufacturing_date = parse_date_safe(detected_fields.get('mfg_date') or ocr_data.get('mfg_date'))
                 if not expiry_info.expiry_date:
-                    expiry_info.expiry_date = ocr_data.get('expiry_date')
+                    expiry_info.expiry_date = parse_date_safe(ocr_data.get('expiry_date'))
                 if not expiry_info.best_before_date:
-                    expiry_info.best_before_date = ocr_data.get('best_before_date')
+                    expiry_info.best_before_date = parse_date_safe(ocr_data.get('best_before_date'))
                 expiry_info.exp_computed = bool(ocr_data.get('exp_computed', False))
                 if not batch_info.batch_number:
                     batch_info.batch_number = ocr_data.get('batch_number')
                 pricing_info.price = ocr_data.get('price')
                 pricing_info.currency = ocr_data.get('currency')
+                
+                # Fill category & ingredients from OCR if not populated by lookup
+                if not product_info.category:
+                    product_info.category = ocr_data.get('category') or detected_fields.get('category')
+                if not product_info.ingredients:
+                    product_info.ingredients = ocr_data.get('ingredients') or detected_fields.get('ingredients')
 
                 ocr_info.raw_text = ocr_data.get('raw_text')
                 ocr_info.confidence = ocr_data.get('confidence')
@@ -105,16 +146,22 @@ class ProductIntelligenceService:
             else:
                 detected_fields = getattr(ocr_data, 'detected_fields', {})
                 if not manufacturing_info.manufacturing_date:
-                    manufacturing_info.manufacturing_date = detected_fields.get('mfg_date') or getattr(ocr_data, 'mfg_date', None)
+                    manufacturing_info.manufacturing_date = parse_date_safe(detected_fields.get('mfg_date') or getattr(ocr_data, 'mfg_date', None))
                 if not expiry_info.expiry_date:
-                    expiry_info.expiry_date = getattr(ocr_data, 'expiry_date', None)
+                    expiry_info.expiry_date = parse_date_safe(getattr(ocr_data, 'expiry_date', None))
                 if not expiry_info.best_before_date:
-                    expiry_info.best_before_date = getattr(ocr_data, 'best_before_date', None)
+                    expiry_info.best_before_date = parse_date_safe(getattr(ocr_data, 'best_before_date', None))
                 expiry_info.exp_computed = bool(getattr(ocr_data, 'exp_computed', False))
                 if not batch_info.batch_number:
                     batch_info.batch_number = getattr(ocr_data, 'batch_number', None)
                 pricing_info.price = getattr(ocr_data, 'price', None)
                 pricing_info.currency = getattr(ocr_data, 'currency', None)
+                
+                # Fill category & ingredients from OCR if not populated by lookup
+                if not product_info.category:
+                    product_info.category = getattr(ocr_data, 'category', None) or detected_fields.get('category')
+                if not product_info.ingredients:
+                    product_info.ingredients = getattr(ocr_data, 'ingredients', None) or detected_fields.get('ingredients')
 
                 ocr_info.raw_text = getattr(ocr_data, 'raw_text', None)
                 ocr_info.confidence = getattr(ocr_data, 'confidence', None)

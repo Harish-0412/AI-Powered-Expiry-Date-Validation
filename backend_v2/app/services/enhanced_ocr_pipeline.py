@@ -10,8 +10,21 @@ import numpy as np
 import logging
 import os
 import tempfile
+import sys
 from typing import Optional, Dict, Any, Tuple
 from dataclasses import dataclass
+
+# Reconfigure standard output/error to use UTF-8 to handle unicode progress bars (e.g. EasyOCR model downloads)
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+if hasattr(sys.stderr, 'reconfigure'):
+    try:
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 
 from app.services.enhanced_preprocessing import preprocess_for_ocr, get_ocr_views
 from app.services.standalone_date_extractor import extract_dates_standalone, ExtractedDates
@@ -24,6 +37,11 @@ class OCRPipelineResult:
     mfg_date: Optional[str] = None
     expiry_date: Optional[str] = None
     batch_number: Optional[str] = None
+    ingredients: Optional[str] = None
+    product_name: Optional[str] = None
+    category: Optional[str] = None
+    mrp: Optional[float] = None
+    weight: Optional[str] = None
     confidence: float = 0.0
     raw_text: str = ""
     used_vision_llm: bool = False
@@ -98,6 +116,7 @@ class EnhancedOCRPipeline:
             result.mfg_date = extracted.mfg_date
             result.expiry_date = extracted.expiry_date
             result.batch_number = extracted.batch_number
+            result.ingredients = extracted.ingredients
             result.confidence = extracted.confidence
             result.success = (result.mfg_date is not None or result.expiry_date is not None)
         
@@ -133,9 +152,14 @@ class EnhancedOCRPipeline:
             
             if vision_result:
                 result = OCRPipelineResult(
-                    mfg_date=vision_result.mfg_date,
-                    expiry_date=vision_result.expiry_date,
+                    mfg_date=vision_result.mfg_date.isoformat() if hasattr(vision_result.mfg_date, 'isoformat') else vision_result.mfg_date,
+                    expiry_date=vision_result.expiry_date.isoformat() if hasattr(vision_result.expiry_date, 'isoformat') else vision_result.expiry_date,
                     batch_number=vision_result.batch_number,
+                    ingredients=vision_result.ingredients,
+                    product_name=vision_result.product_name,
+                    category=vision_result.category,
+                    mrp=vision_result.mrp,
+                    weight=vision_result.weight,
                     confidence=vision_result.confidence_score,
                     used_vision_llm=True,
                     success=True
