@@ -23,6 +23,7 @@ class BarcodeScan(Base):
 
     # ── Resolved product (nullable — barcode may not match any product) ──
     product_id      = Column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL"), nullable=True)
+    scan_session_id = Column(UUID(as_uuid=True), ForeignKey("scan_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
 
     # ── Raw scan data ─────────────────────────────────────────
     raw_barcode     = Column(String(255), nullable=False)   # value as scanned
@@ -42,4 +43,5 @@ class BarcodeScan(Base):
 
     # ── Relationships ─────────────────────────────────────────
     product         = relationship("Product", back_populates="barcode_scans")
+    scan_session    = relationship("ScanSession", back_populates="barcode_scans")
     inventory_items = relationship("InventoryItem", back_populates="barcode_scan")

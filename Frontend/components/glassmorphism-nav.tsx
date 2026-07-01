@@ -1,9 +1,11 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { Menu, X, ArrowRight } from "lucide-react"
+import { Menu, X, ArrowRight, LogOut } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
+import { useAuth } from "@/contexts/AuthContext"
+import { useRouter } from "next/navigation"
 
 const navigation = [
   { name: "Features", href: "#features" },
@@ -18,6 +20,8 @@ export function GlassmorphismNav() {
   const [hasLoaded, setHasLoaded] = useState(false)
   const [userName, setUserName] = useState<string | null>(null)
   const lastScrollY = useRef(0)
+  const { user, logout } = useAuth()
+  const router = useRouter()
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -182,15 +186,38 @@ export function GlassmorphismNav() {
               </div>
 
               {/* Desktop CTA Button */}
-              <div className="hidden md:block">
+          <div className="hidden md:flex items-center gap-4">
+            {user ? (
+              <>
+                <span className="text-white font-medium">
+                  Welcome, {user.name || user.email}
+                </span>
+                <button
+                  onClick={() => {
+                    logout()
+                    router.push("/")
+                  }}
+                  className="relative bg-white/10 hover:bg-white/20 text-white font-medium px-6 py-2 rounded-full flex items-center transition-all duration-300 hover:scale-105 cursor-pointer group border border-white/20"
+                >
+                  <LogOut size={16} className="mr-2" />
+                  Logout
+                </button>
+              </>
+            ) : (
+              <>
+                <Link href="/login" className="text-white/80 hover:text-white font-medium">
+                  Login
+                </Link>
                 <button
                   className="relative bg-white hover:bg-gray-50 text-black font-medium px-6 py-2 rounded-full flex items-center transition-all duration-300 hover:scale-105 hover:shadow-lg cursor-pointer group"
-                  onClick={() => scrollToSection("#contact")}
+                  onClick={() => router.push(user ? "/dashboard" : "/login")}
                 >
                   <span className="mr-2">Get Started</span>
                   <ArrowRight size={16} className="transition-transform duration-300 group-hover:translate-x-1" />
                 </button>
-              </div>
+              </>
+            )}
+          </div>
 
               {/* Mobile Menu Button */}
               <button
@@ -265,6 +292,7 @@ export function GlassmorphismNav() {
                   ),
                 )}
                 <div className="h-px bg-white/10 my-2" />
+<<<<<<< HEAD
                 <Link
                   href="/login"
                   className={`text-white/80 hover:text-white hover:bg-white/10 rounded-lg px-3 py-3 text-left transition-all duration-300 font-medium cursor-pointer transform hover:scale-[1.02] hover:translate-x-1 ${
@@ -301,6 +329,61 @@ export function GlassmorphismNav() {
                   <span className="mr-2">Get Started</span>
                   <ArrowRight size={16} className="transition-transform duration-300 group-hover:translate-x-1" />
                 </button>
+=======
+                {user ? (
+                  <>
+                    <div className="text-white font-medium mb-2">
+                      Welcome, {user.name || user.email}
+                    </div>
+                    <button
+                      className={`relative bg-white/10 hover:bg-white/20 text-white font-medium px-6 py-3 rounded-full flex items-center transition-all duration-300 hover:scale-105 cursor-pointer group transform border border-white/20 ${
+                        isOpen ? "animate-mobile-menu-item" : ""
+                      }`}
+                      style={{
+                        animationDelay: isOpen ? `${navigation.length * 80 + 150}ms` : "0ms",
+                      }}
+                      onClick={() => {
+                        logout()
+                        router.push("/")
+                        setIsOpen(false)
+                      }}
+                    >
+                      <LogOut size={16} className="mr-2" />
+                      Logout
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <Link
+                      href="/login"
+                      className={`text-white/80 hover:text-white hover:bg-white/10 rounded-lg px-3 py-3 text-left transition-all duration-300 font-medium cursor-pointer transform hover:scale-[1.02] hover:translate-x-1 ${
+                        isOpen ? "animate-mobile-menu-item" : ""
+                      }`}
+                      style={{
+                        animationDelay: isOpen ? `${navigation.length * 80 + 100}ms` : "0ms",
+                      }}
+                      onClick={() => setIsOpen(false)}
+                    >
+                      Login
+                    </Link>
+                    <button
+                      className={`relative bg-white hover:bg-gray-50 text-black font-medium px-6 py-3 rounded-full flex items-center transition-all duration-300 hover:scale-105 hover:shadow-lg cursor-pointer group transform ${
+                        isOpen ? "animate-mobile-menu-item" : ""
+                      }`}
+                      style={{
+                        animationDelay: isOpen ? `${navigation.length * 80 + 200}ms` : "0ms",
+                      }}
+                      onClick={() => {
+                        router.push("/login")
+                        setIsOpen(false)
+                      }}
+                    >
+                      <span className="mr-2">Get Started</span>
+                      <ArrowRight size={16} className="transition-transform duration-300 group-hover:translate-x-1" />
+                    </button>
+                  </>
+                )}
+>>>>>>> 0f02161 (Update project for Harish branch)
               </div>
             </div>
           </div>

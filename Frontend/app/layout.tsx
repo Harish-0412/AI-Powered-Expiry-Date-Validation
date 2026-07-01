@@ -6,6 +6,7 @@ import { PageTransition } from "@/components/page-transition"
 import { NavigationTransition } from "@/components/navigation-transition"
 import { SpeedInsights } from "@vercel/speed-insights/next"
 import { Dancing_Script, Caveat } from "next/font/google"
+import { AuthProvider } from "@/contexts/AuthContext"
 
 const dancingScript = Dancing_Script({
   subsets: ["latin"],
@@ -34,11 +35,13 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`font-sans antialiased ${dancingScript.variable} ${caveat.variable}`}>
-        <Suspense fallback={null}>
-          <NavigationTransition />
-          <PageTransition>{children}</PageTransition>
-        </Suspense>
-        <SpeedInsights />
+        <AuthProvider>
+          <Suspense fallback={null}>
+            <NavigationTransition />
+            <PageTransition>{children}</PageTransition>
+          </Suspense>
+          <SpeedInsights />
+        </AuthProvider>
       </body>
     </html>
   )

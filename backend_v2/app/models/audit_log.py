@@ -13,7 +13,7 @@ Used for compliance, debugging, and ML team traceability.
 import uuid
 
 from sqlalchemy import Column, String, DateTime, Text, JSON
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -32,9 +32,13 @@ class AuditLog(Base):
     # ── Which record ─────────────────────────────────────────
     entity_type     = Column(String(100), nullable=True)   # product | inventory_item | ocr_result
     entity_id       = Column(String(100), nullable=True, index=True)  # UUID as string
+    action          = Column(String(100), nullable=True, index=True)
+    message         = Column(Text, nullable=True)
+    metadata_json   = Column(JSONB, nullable=True)
 
     # ── Who did it ────────────────────────────────────────────
     actor_id        = Column(String(200), nullable=True)   # user_id, service_name, "system"
+    actor_name      = Column(String(150), nullable=True)
     actor_type      = Column(String(50),  nullable=True)   # user | service | ml_team | system
 
     # ── What changed ─────────────────────────────────────────

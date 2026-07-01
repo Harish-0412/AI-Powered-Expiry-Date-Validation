@@ -21,6 +21,7 @@ class ProductImage(Base):
 
     id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     product_id      = Column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    scan_session_id = Column(UUID(as_uuid=True), ForeignKey("scan_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
 
     # ── File info ─────────────────────────────────────────────
     file_path       = Column(String(500), nullable=False)   # server-side storage path
@@ -48,4 +49,5 @@ class ProductImage(Base):
 
     # ── Relationships ─────────────────────────────────────────
     product         = relationship("Product", back_populates="product_images")
+    scan_session    = relationship("ScanSession", back_populates="product_images")
     ocr_results     = relationship("OCRResult", back_populates="product_image", cascade="all, delete-orphan")

@@ -1,6 +1,13 @@
+"use client"
+
 import { Button } from "@/components/ui/button"
 import RotatingText from "./RotatingText"
+<<<<<<< HEAD
 import AuthWelcome from "./auth-welcome"
+=======
+import { useAuth } from "@/contexts/AuthContext"
+import { useRouter } from "next/navigation"
+>>>>>>> 0f02161 (Update project for Harish branch)
 
 const ArrowRight = () => (
   <svg
@@ -30,6 +37,8 @@ const Play = () => (
 )
 
 export function HeroSection() {
+  const { user } = useAuth()
+  const router = useRouter()
   return (
     <section className="min-h-screen flex items-center justify-center px-4 py-20 relative">
       <div className="max-w-4xl mx-auto text-center relative z-10 animate-fade-in-hero">
@@ -65,6 +74,7 @@ export function HeroSection() {
           Automated inventory validation platform that identifies products, verifies expiry information, calculates remaining shelf life, and makes intelligent inventory decisions in real time.
         </p>
 
+<<<<<<< HEAD
         <div className="flex flex-col items-center space-y-6 mb-8 animate-fade-in-buttons">
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full max-w-2xl">
             <Button
@@ -86,6 +96,18 @@ export function HeroSection() {
               </a>
             </Button>
           </div>
+=======
+        {/* CTA Buttons */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8 sm:mb-16 animate-fade-in-buttons">
+          <Button
+            size="lg"
+            className="bg-white text-black rounded-full px-8 py-4 text-lg font-medium transition-all duration-300 hover:bg-gray-50 hover:scale-105 hover:shadow-lg group cursor-pointer relative overflow-hidden"
+            onClick={() => router.push(user ? "/dashboard" : "/login")}
+          >
+            Get Started
+            <ArrowRight />
+          </Button>
+>>>>>>> 0f02161 (Update project for Harish branch)
 
           <Button
             variant="outline"

@@ -15,9 +15,11 @@ from app.database import check_db_connection
 
 # Register all models on Base.metadata
 from app.models import (  # noqa: F401
-    Product, BarcodeScan, ProductImage, OCRResult,
-    InventoryItem, StorageContext, MLPrediction,
-    ManualReview, AuditLog,
+    Product, ProductIdentifier, ProductIngredient, ProductAllergen,
+    ProductNutrition, ProductStorageRequirement, Supplier, Warehouse,
+    StorageLocation, ScanSession, BarcodeScan, ProductImage, OCRResult,
+    InventoryItem, InventoryMovement, ManualReview, ScanAlert, AuditLog,
+    ExternalProductEnrichmentLog, StorageContext, MLPrediction,
 )
 from app.routes.auth import router as auth_router
 

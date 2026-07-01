@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   # ── PostgreSQL Database ───────────────────────────────────
   postgres:
@@ -10,9 +8,10 @@ services:
       POSTGRES_PASSWORD: expiry_pass
       POSTGRES_DB: expiry_db
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./scripts/schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U expiry_user -d expiry_db"]
       interval: 5s

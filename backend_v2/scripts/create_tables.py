@@ -1,24 +1,31 @@
-"""
-scripts/create_tables.py — Create all database tables.
-
-Safe to run multiple times — SQLAlchemy's create_all uses
-IF NOT EXISTS under the hood so existing tables are never dropped.
-
-Usage:
-    python scripts/create_tables.py
-"""
-
-import sys
 import os
+import sys
 
-# Ensure the project root is on the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app.database import Base, engine, check_db_connection
-from app.models import (  # noqa: F401 — imports register models on Base.metadata
-    Product, BarcodeScan, ProductImage, OCRResult,
-    InventoryItem, StorageContext, MLPrediction,
-    ManualReview, AuditLog,
+from app.database import Base, check_db_connection, engine
+from app.models import (  # noqa: F401
+    AuditLog,
+    BarcodeScan,
+    ExternalProductEnrichmentLog,
+    InventoryItem,
+    InventoryMovement,
+    ManualReview,
+    MLPrediction,
+    OCRResult,
+    Product,
+    ProductAllergen,
+    ProductIdentifier,
+    ProductImage,
+    ProductIngredient,
+    ProductNutrition,
+    ProductStorageRequirement,
+    ScanAlert,
+    ScanSession,
+    StorageContext,
+    StorageLocation,
+    Supplier,
+    Warehouse,
 )
 
 
@@ -32,9 +39,8 @@ def main():
     print("Creating tables (IF NOT EXISTS)...")
     Base.metadata.create_all(bind=engine)
 
-    # List what was registered
     table_names = sorted(Base.metadata.tables.keys())
-    print(f"\n✅ {len(table_names)} tables ready:")
+    print(f"\n{len(table_names)} tables ready:")
     for name in table_names:
         print(f"   {name}")
 

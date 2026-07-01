@@ -30,6 +30,16 @@ class InventoryItem(Base):
     # ── Source references ─────────────────────────────────────
     product_id          = Column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="RESTRICT"), nullable=False)
     barcode_scan_id     = Column(UUID(as_uuid=True), ForeignKey("barcode_scans.id", ondelete="SET NULL"), nullable=True)
+    scan_session_id     = Column(UUID(as_uuid=True), ForeignKey("scan_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
+    ocr_result_id       = Column(
+        UUID(as_uuid=True),
+        ForeignKey("ocr_results.id", ondelete="SET NULL", use_alter=True, name="fk_inventory_items_ocr_result_id"),
+        nullable=True,
+        index=True,
+    )
+    supplier_id         = Column(UUID(as_uuid=True), ForeignKey("suppliers.id", ondelete="SET NULL"), nullable=True, index=True)
+    warehouse_id        = Column(UUID(as_uuid=True), ForeignKey("warehouses.id", ondelete="SET NULL"), nullable=True, index=True)
+    storage_location_id = Column(UUID(as_uuid=True), ForeignKey("storage_locations.id", ondelete="SET NULL"), nullable=True, index=True)
 
     # ── Batch identity ────────────────────────────────────────
     batch_number        = Column(String(100), nullable=True, index=True)
@@ -38,11 +48,15 @@ class InventoryItem(Base):
     # These are raw inputs. The ML team validates and uses them.
     manufacturing_date  = Column(Date, nullable=True)
     expiry_date         = Column(Date, nullable=True)
+    packed_date         = Column(Date, nullable=True)
 
     # ── Backend pipeline status ───────────────────────────────
     # PENDING_OCR | OCR_COMPLETED | PENDING_ML_REVIEW | ML_COMPLETED | MANUAL_REVIEW
     pipeline_status     = Column(String(30), nullable=False, default="PENDING_OCR", index=True)
     status_reason       = Column(Text, nullable=True)  # reason for current status
+    intake_source       = Column(String(50), nullable=False, default="OCR_SCAN")
+    intake_status       = Column(String(50), nullable=False, default="DATA_INCOMPLETE", index=True)
+    operator_decision   = Column(String(100), nullable=True)
 
     # ── Quantity ──────────────────────────────────────────────
     quantity            = Column(Integer, nullable=True, default=1)
@@ -50,6 +64,7 @@ class InventoryItem(Base):
 
     # ── Notes ─────────────────────────────────────────────────
     intake_notes        = Column(Text, nullable=True)
+    notes               = Column(Text, nullable=True)
 
     # ── Timestamps ────────────────────────────────────────────
     intake_at           = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -59,7 +74,14 @@ class InventoryItem(Base):
     # ── Relationships ─────────────────────────────────────────
     product             = relationship("Product",       back_populates="inventory_items")
     barcode_scan        = relationship("BarcodeScan",   back_populates="inventory_items")
+    scan_session        = relationship("ScanSession", back_populates="inventory_items")
+    selected_ocr_result = relationship("OCRResult", foreign_keys=[ocr_result_id])
+    supplier            = relationship("Supplier", back_populates="inventory_items")
+    warehouse           = relationship("Warehouse", back_populates="inventory_items")
+    storage_location    = relationship("StorageLocation", back_populates="inventory_items")
     storage_context     = relationship("StorageContext", back_populates="inventory_item", uselist=False)
-    ocr_results         = relationship("OCRResult",     back_populates="inventory_item")
+    ocr_results         = relationship("OCRResult",     back_populates="inventory_item", foreign_keys="OCRResult.inventory_item_id")
     ml_predictions      = relationship("MLPrediction",  back_populates="inventory_item")
     manual_reviews      = relationship("ManualReview",  back_populates="inventory_item")
+    movements           = relationship("InventoryMovement", back_populates="inventory_item")
+    scan_alerts         = relationship("ScanAlert", back_populates="inventory_item")

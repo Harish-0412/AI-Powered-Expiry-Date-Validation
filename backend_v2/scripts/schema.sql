@@ -1,38 +1,31 @@
--- =============================================================
--- Phase 2 — Complete PostgreSQL Schema
--- AI-Powered Expiry Date Validation System
--- =============================================================
--- Safe to run multiple times (all tables use IF NOT EXISTS).
--- Run with:
---   docker exec -i expiry_postgres psql -U expiry_user -d expiry_db < scripts/schema.sql
+-- Full Expiry Validation PostgreSQL schema dump
+-- Generated from backend_v2 SQLAlchemy models.
+-- Restore with: psql -U expiry_user -d expiry_db -f full_expiry_db_dump.sql
 
--- Enable UUID generation
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- =============================================================
--- 1. products
--- Master product catalogue. Every barcode scan and inventory
--- intake must reference a product in this table.
--- =============================================================
-CREATE TABLE IF NOT EXISTS products (
-    id                   UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    name                 VARCHAR(255) NOT NULL,
-    brand                VARCHAR(255),
-    sku                  VARCHAR(100) NOT NULL UNIQUE,
-    barcode              VARCHAR(100) NOT NULL UNIQUE,
-    barcode_type         VARCHAR(20)  NOT NULL DEFAULT 'EAN13',
-    -- EAN13 | EAN8 | UPC-A | QR | CODE128 | DATAMATRIX
-    category             VARCHAR(100),
-    description          TEXT,
-    default_storage_type VARCHAR(50),
-    -- ambient | refrigerated | frozen | controlled
-    image_url            VARCHAR(500),
-    -- Primary product image URL (populated by image upload pipeline)
-    is_active            BOOLEAN      NOT NULL DEFAULT TRUE,
-    created_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+CREATE TABLE audit_logs (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	event_type VARCHAR(100) NOT NULL, 
+	entity_type VARCHAR(100), 
+	entity_id VARCHAR(100), 
+	action VARCHAR(100), 
+	message TEXT, 
+	metadata_json JSONB, 
+	actor_id VARCHAR(200), 
+	actor_name VARCHAR(150), 
+	actor_type VARCHAR(50), 
+	before_state JSON, 
+	after_state JSON, 
+	change_summary TEXT, 
+	ip_address VARCHAR(50), 
+	user_agent VARCHAR(500), 
+	request_id VARCHAR(100), 
+	occurred_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id)
 );
 
+<<<<<<< HEAD
 CREATE INDEX IF NOT EXISTS idx_products_sku      ON products (sku);
 CREATE INDEX IF NOT EXISTS idx_products_barcode  ON products (barcode);
 CREATE INDEX IF NOT EXISTS idx_products_category ON products (category);
@@ -72,211 +65,467 @@ CREATE TABLE IF NOT EXISTS barcode_scans (
     notes           TEXT,
     scanned_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+=======
+CREATE TABLE products (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	name VARCHAR(255) NOT NULL, 
+	brand VARCHAR(255), 
+	manufacturer VARCHAR(255), 
+	sku VARCHAR(100) NOT NULL, 
+	barcode VARCHAR(100) NOT NULL, 
+	barcode_type VARCHAR(20) DEFAULT 'EAN13' NOT NULL, 
+	category VARCHAR(100), 
+	sub_category VARCHAR(100), 
+	description TEXT, 
+	net_quantity VARCHAR(100), 
+	unit VARCHAR(50), 
+	mrp NUMERIC(10, 2), 
+	currency VARCHAR(10) DEFAULT 'INR' NOT NULL, 
+	country_of_origin VARCHAR(100), 
+	product_type VARCHAR(100), 
+	default_storage_type VARCHAR(50), 
+	shelf_life_label VARCHAR(255), 
+	image_url VARCHAR(500), 
+	product_image_url VARCHAR(500), 
+	is_active BOOLEAN DEFAULT true NOT NULL, 
+	is_perishable BOOLEAN DEFAULT false NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id)
+>>>>>>> 0f02161 (Update project for Harish branch)
 );
 
-CREATE INDEX IF NOT EXISTS idx_barcode_scans_product_id  ON barcode_scans (product_id);
-CREATE INDEX IF NOT EXISTS idx_barcode_scans_raw_barcode ON barcode_scans (raw_barcode);
-CREATE INDEX IF NOT EXISTS idx_barcode_scans_scan_status ON barcode_scans (scan_status);
-
--- =============================================================
--- 3. inventory_items
--- A single batch received during warehouse intake.
--- Pipeline status tracks where this batch is in the backend
--- processing flow. Final decisions come from ml_predictions.
--- =============================================================
-CREATE TABLE IF NOT EXISTS inventory_items (
-    id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    product_id       UUID         NOT NULL REFERENCES products (id) ON DELETE RESTRICT,
-    barcode_scan_id  UUID         REFERENCES barcode_scans (id) ON DELETE SET NULL,
-    batch_number     VARCHAR(100),
-    manufacturing_date DATE,
-    expiry_date        DATE,
-    -- Backend pipeline status (never ACCEPTED/REJECTED here — those come from ML)
-    pipeline_status  VARCHAR(30)  NOT NULL DEFAULT 'PENDING_OCR',
-    -- PENDING_OCR | OCR_COMPLETED | PENDING_ML_REVIEW | ML_COMPLETED | MANUAL_REVIEW
-    status_reason    TEXT,
-    quantity         INTEGER      DEFAULT 1,
-    unit             VARCHAR(20),
-    -- units | cartons | pallets
-    intake_notes     TEXT,
-    intake_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+CREATE TABLE scan_sessions (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	session_status VARCHAR(50) DEFAULT 'IN_PROGRESS' NOT NULL, 
+	operator_name VARCHAR(150), 
+	device_id VARCHAR(150), 
+	notes TEXT, 
+	started_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	completed_at TIMESTAMP WITH TIME ZONE, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_inventory_items_product_id       ON inventory_items (product_id);
-CREATE INDEX IF NOT EXISTS idx_inventory_items_pipeline_status  ON inventory_items (pipeline_status);
-CREATE INDEX IF NOT EXISTS idx_inventory_items_batch_number     ON inventory_items (batch_number);
-CREATE INDEX IF NOT EXISTS idx_inventory_items_expiry_date      ON inventory_items (expiry_date);
-
--- =============================================================
--- 4. product_images
--- Uploaded product or label images awaiting OCR processing.
--- =============================================================
-CREATE TABLE IF NOT EXISTS product_images (
-    id                UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    product_id        UUID         NOT NULL REFERENCES products (id) ON DELETE CASCADE,
-    file_path         VARCHAR(500) NOT NULL,
-    file_url          VARCHAR(500),
-    file_size_bytes   INTEGER,
-    mime_type         VARCHAR(100),
-    image_type        VARCHAR(50),
-    -- front_label | back_label | side_label | product_photo | barcode_close_up
-    processing_status VARCHAR(30)  NOT NULL DEFAULT 'uploaded',
-    -- uploaded | ocr_pending | ocr_completed | failed
-    notes             TEXT,
-    uploaded_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+CREATE TABLE suppliers (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	name VARCHAR(255) NOT NULL, 
+	contact_name VARCHAR(150), 
+	phone VARCHAR(50), 
+	email VARCHAR(255), 
+	address TEXT, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_product_images_product_id        ON product_images (product_id);
-CREATE INDEX IF NOT EXISTS idx_product_images_processing_status ON product_images (processing_status);
-
--- =============================================================
--- 5. ocr_results
--- Raw OCR extraction output from the processing pipeline.
--- Stores text and extracted date candidate blocks as JSON.
--- No date parsing here — that is done by the ML team.
--- =============================================================
-CREATE TABLE IF NOT EXISTS ocr_results (
-    id                     UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
-    product_image_id       UUID  NOT NULL REFERENCES product_images (id) ON DELETE CASCADE,
-    inventory_item_id      UUID  REFERENCES inventory_items (id) ON DELETE SET NULL,
-    raw_text               TEXT,
-    ocr_engine             VARCHAR(100),
-    -- e.g. "tesseract-5.3", "google-vision-v1"
-    ocr_engine_version     VARCHAR(50),
-    extracted_text_blocks  JSONB,
-    -- [{"label": "MFG", "value": "01/05/2026"}, {"label": "EXP", "value": "01/11/2026"}]
-    overall_confidence     NUMERIC(5,4),
-    -- 0.0000 – 1.0000
-    ocr_status             VARCHAR(30) NOT NULL DEFAULT 'pending',
-    -- pending | completed | failed
-    failure_reason         TEXT,
-    processed_at           TIMESTAMPTZ,
-    created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE warehouses (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	name VARCHAR(255) NOT NULL, 
+	code VARCHAR(100), 
+	address TEXT, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	UNIQUE (code)
 );
 
-CREATE INDEX IF NOT EXISTS idx_ocr_results_product_image_id  ON ocr_results (product_image_id);
-CREATE INDEX IF NOT EXISTS idx_ocr_results_inventory_item_id ON ocr_results (inventory_item_id);
-CREATE INDEX IF NOT EXISTS idx_ocr_results_ocr_status        ON ocr_results (ocr_status);
-
--- =============================================================
--- 6. storage_contexts
--- Physical storage location and environmental conditions
--- for an inventory batch. One-to-one with inventory_items.
--- Gives ML team context for shelf-life prediction.
--- =============================================================
-CREATE TABLE IF NOT EXISTS storage_contexts (
-    id                  UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
-    inventory_item_id   UUID  NOT NULL UNIQUE REFERENCES inventory_items (id) ON DELETE CASCADE,
-    warehouse_id        VARCHAR(100),
-    zone                VARCHAR(100),
-    aisle               VARCHAR(50),
-    shelf               VARCHAR(50),
-    bin_location        VARCHAR(100),
-    storage_type        VARCHAR(50),
-    -- ambient | refrigerated | frozen | controlled
-    temperature_celsius NUMERIC(5,2),
-    humidity_percent    NUMERIC(5,2),
-    notes               TEXT,
-    recorded_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE barcode_scans (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	product_id UUID, 
+	scan_session_id UUID, 
+	raw_barcode VARCHAR(255) NOT NULL, 
+	barcode_type VARCHAR(20), 
+	scan_source VARCHAR(100), 
+	scan_status VARCHAR(20) DEFAULT 'unresolved' NOT NULL, 
+	notes TEXT, 
+	scanned_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(product_id) REFERENCES products (id) ON DELETE SET NULL, 
+	FOREIGN KEY(scan_session_id) REFERENCES scan_sessions (id) ON DELETE SET NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_storage_contexts_inventory_item_id ON storage_contexts (inventory_item_id);
-CREATE INDEX IF NOT EXISTS idx_storage_contexts_warehouse_id       ON storage_contexts (warehouse_id);
-
--- =============================================================
--- 7. ml_predictions
--- ML team's shelf-life prediction for a batch.
--- Backend only writes here when the ML team returns a result.
--- Final decisions (ACCEPTED, REJECTED, etc.) live here ONLY.
--- =============================================================
-CREATE TABLE IF NOT EXISTS ml_predictions (
-    id                      UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
-    inventory_item_id       UUID  NOT NULL REFERENCES inventory_items (id) ON DELETE CASCADE,
-    model_name              VARCHAR(200),
-    model_version           VARCHAR(50),
-    predicted_mfg_date      DATE,
-    predicted_expiry_date   DATE,
-    predicted_remaining_days INTEGER,
-    predicted_decision      VARCHAR(30),
-    -- ACCEPTED | PRIORITY_SALE | REJECTED | REQUIRES_REVIEW
-    decision_confidence     NUMERIC(5,4),
-    decision_reason         TEXT,
-    raw_prediction_payload  TEXT,
-    -- Full JSON string from the ML model
-    prediction_status       VARCHAR(20) NOT NULL DEFAULT 'pending',
-    -- pending | completed | failed
-    failure_reason          TEXT,
-    predicted_at            TIMESTAMPTZ,
-    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE external_product_enrichment_logs (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	product_id UUID, 
+	barcode_value VARCHAR(150) NOT NULL, 
+	provider VARCHAR(100) NOT NULL, 
+	request_url TEXT, 
+	response_status VARCHAR(50) NOT NULL, 
+	response_json JSONB, 
+	error_message TEXT, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(product_id) REFERENCES products (id) ON DELETE SET NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_ml_predictions_inventory_item_id  ON ml_predictions (inventory_item_id);
-CREATE INDEX IF NOT EXISTS idx_ml_predictions_predicted_decision ON ml_predictions (predicted_decision);
-CREATE INDEX IF NOT EXISTS idx_ml_predictions_prediction_status  ON ml_predictions (prediction_status);
-
--- =============================================================
--- 8. manual_reviews
--- Human review records for flagged batches.
--- Created when OCR fails, ML confidence is low, or a
--- supervisor overrides an automated decision.
--- =============================================================
-CREATE TABLE IF NOT EXISTS manual_reviews (
-    id                   UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
-    inventory_item_id    UUID  NOT NULL REFERENCES inventory_items (id) ON DELETE CASCADE,
-    reviewer_id          VARCHAR(200),
-    reviewer_role        VARCHAR(100),
-    -- warehouse_staff | supervisor | qa
-    corrected_mfg_date   DATE,
-    corrected_expiry_date DATE,
-    human_decision       VARCHAR(30),
-    -- ACCEPTED | PRIORITY_SALE | REJECTED | ESCALATE_TO_QA
-    review_notes         TEXT,
-    escalation_reason    TEXT,
-    review_status        VARCHAR(20) NOT NULL DEFAULT 'pending',
-    -- pending | in_progress | completed | escalated
-    reviewed_at          TIMESTAMPTZ,
-    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE product_allergens (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	product_id UUID NOT NULL, 
+	allergen_name VARCHAR(150) NOT NULL, 
+	allergen_type VARCHAR(100), 
+	contains BOOLEAN NOT NULL, 
+	may_contain BOOLEAN NOT NULL, 
+	source_text TEXT, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(product_id) REFERENCES products (id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_manual_reviews_inventory_item_id ON manual_reviews (inventory_item_id);
-CREATE INDEX IF NOT EXISTS idx_manual_reviews_review_status     ON manual_reviews (review_status);
-CREATE INDEX IF NOT EXISTS idx_manual_reviews_human_decision    ON manual_reviews (human_decision);
-
--- =============================================================
--- 9. audit_logs
--- Immutable append-only event log.
--- Records who did what, on which record, and what changed.
--- Never updated — only inserted.
--- =============================================================
-CREATE TABLE IF NOT EXISTS audit_logs (
-    id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    event_type      VARCHAR(100) NOT NULL,
-    -- product.created | inventory.intake | ocr.completed
-    -- ml.prediction_received | manual_review.completed | status.changed
-    entity_type     VARCHAR(100),
-    entity_id       VARCHAR(100),
-    actor_id        VARCHAR(200),
-    actor_type      VARCHAR(50),
-    -- user | service | ml_team | system
-    before_state    JSONB,
-    after_state     JSONB,
-    change_summary  TEXT,
-    ip_address      VARCHAR(50),
-    user_agent      VARCHAR(500),
-    request_id      VARCHAR(100),
-    occurred_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+CREATE TABLE product_identifiers (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	product_id UUID NOT NULL, 
+	identifier_value VARCHAR(150) NOT NULL, 
+	identifier_type VARCHAR(50) NOT NULL, 
+	is_primary BOOLEAN NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(product_id) REFERENCES products (id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_audit_logs_event_type  ON audit_logs (event_type);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_entity_id   ON audit_logs (entity_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_id    ON audit_logs (actor_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_occurred_at ON audit_logs (occurred_at DESC);
+CREATE TABLE product_images (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	product_id UUID NOT NULL, 
+	scan_session_id UUID, 
+	file_path VARCHAR(500) NOT NULL, 
+	file_url VARCHAR(500), 
+	file_size_bytes INTEGER, 
+	mime_type VARCHAR(100), 
+	image_type VARCHAR(50), 
+	processing_status VARCHAR(30) DEFAULT 'uploaded' NOT NULL, 
+	notes TEXT, 
+	uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(product_id) REFERENCES products (id) ON DELETE CASCADE, 
+	FOREIGN KEY(scan_session_id) REFERENCES scan_sessions (id) ON DELETE SET NULL
+);
+
+CREATE TABLE product_ingredients (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	product_id UUID NOT NULL, 
+	ingredient_name VARCHAR(255) NOT NULL, 
+	ingredient_order INTEGER, 
+	percentage NUMERIC(5, 2), 
+	is_additive BOOLEAN NOT NULL, 
+	additive_code VARCHAR(50), 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(product_id) REFERENCES products (id) ON DELETE CASCADE
+);
+
+CREATE TABLE product_nutrition (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	product_id UUID NOT NULL, 
+	serving_size VARCHAR(100), 
+	calories NUMERIC(10, 2), 
+	protein_g NUMERIC(10, 2), 
+	carbohydrates_g NUMERIC(10, 2), 
+	sugar_g NUMERIC(10, 2), 
+	fat_g NUMERIC(10, 2), 
+	saturated_fat_g NUMERIC(10, 2), 
+	sodium_mg NUMERIC(10, 2), 
+	fiber_g NUMERIC(10, 2), 
+	raw_nutrition_text TEXT, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(product_id) REFERENCES products (id) ON DELETE CASCADE
+);
+
+CREATE TABLE product_storage_requirements (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	product_id UUID NOT NULL, 
+	storage_type VARCHAR(50) NOT NULL, 
+	min_temperature_c NUMERIC(5, 2), 
+	max_temperature_c NUMERIC(5, 2), 
+	humidity_notes TEXT, 
+	handling_notes TEXT, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(product_id) REFERENCES products (id) ON DELETE CASCADE
+);
+
+CREATE TABLE storage_locations (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	warehouse_id UUID NOT NULL, 
+	location_code VARCHAR(100) NOT NULL, 
+	zone VARCHAR(100), 
+	aisle VARCHAR(50), 
+	rack VARCHAR(50), 
+	shelf VARCHAR(50), 
+	bin VARCHAR(50), 
+	storage_type VARCHAR(50), 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(warehouse_id) REFERENCES warehouses (id) ON DELETE CASCADE
+);
+
+CREATE TABLE inventory_items (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	product_id UUID NOT NULL, 
+	barcode_scan_id UUID, 
+	scan_session_id UUID, 
+	ocr_result_id UUID, 
+	supplier_id UUID, 
+	warehouse_id UUID, 
+	storage_location_id UUID, 
+	batch_number VARCHAR(100), 
+	manufacturing_date DATE, 
+	expiry_date DATE, 
+	packed_date DATE, 
+	pipeline_status VARCHAR(30) DEFAULT 'PENDING_OCR' NOT NULL, 
+	status_reason TEXT, 
+	intake_source VARCHAR(50) DEFAULT 'OCR_SCAN' NOT NULL, 
+	intake_status VARCHAR(50) DEFAULT 'DATA_INCOMPLETE' NOT NULL, 
+	operator_decision VARCHAR(100), 
+	quantity INTEGER DEFAULT 1, 
+	unit VARCHAR(20), 
+	intake_notes TEXT, 
+	notes TEXT, 
+	intake_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(product_id) REFERENCES products (id) ON DELETE RESTRICT, 
+	FOREIGN KEY(barcode_scan_id) REFERENCES barcode_scans (id) ON DELETE SET NULL, 
+	FOREIGN KEY(scan_session_id) REFERENCES scan_sessions (id) ON DELETE SET NULL, 
+	FOREIGN KEY(supplier_id) REFERENCES suppliers (id) ON DELETE SET NULL, 
+	FOREIGN KEY(warehouse_id) REFERENCES warehouses (id) ON DELETE SET NULL, 
+	FOREIGN KEY(storage_location_id) REFERENCES storage_locations (id) ON DELETE SET NULL
+);
+
+CREATE TABLE inventory_movements (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	inventory_item_id UUID NOT NULL, 
+	from_location_id UUID, 
+	to_location_id UUID, 
+	movement_type VARCHAR(50) NOT NULL, 
+	quantity INTEGER NOT NULL, 
+	reason TEXT, 
+	moved_by VARCHAR(100), 
+	moved_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(inventory_item_id) REFERENCES inventory_items (id) ON DELETE CASCADE, 
+	FOREIGN KEY(from_location_id) REFERENCES storage_locations (id) ON DELETE SET NULL, 
+	FOREIGN KEY(to_location_id) REFERENCES storage_locations (id) ON DELETE SET NULL
+);
+
+CREATE TABLE ml_predictions (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	inventory_item_id UUID NOT NULL, 
+	model_name VARCHAR(200), 
+	model_version VARCHAR(50), 
+	predicted_mfg_date DATE, 
+	predicted_expiry_date DATE, 
+	predicted_remaining_days INTEGER, 
+	predicted_decision VARCHAR(30), 
+	decision_confidence FLOAT, 
+	decision_reason TEXT, 
+	raw_prediction_payload TEXT, 
+	prediction_status VARCHAR(20) DEFAULT 'pending' NOT NULL, 
+	failure_reason TEXT, 
+	predicted_at TIMESTAMP WITH TIME ZONE, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(inventory_item_id) REFERENCES inventory_items (id) ON DELETE CASCADE
+);
+
+CREATE TABLE ocr_results (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	product_image_id UUID NOT NULL, 
+	product_id UUID, 
+	scan_session_id UUID, 
+	inventory_item_id UUID, 
+	raw_text TEXT, 
+	ocr_engine VARCHAR(100), 
+	ocr_engine_version VARCHAR(50), 
+	extracted_text_blocks JSON, 
+	overall_confidence FLOAT, 
+	ocr_confidence NUMERIC(5, 4), 
+	extracted_product_name VARCHAR(255), 
+	extracted_brand VARCHAR(150), 
+	extracted_description TEXT, 
+	extracted_ingredients_text TEXT, 
+	extracted_nutrition_text TEXT, 
+	candidate_mfg_date DATE, 
+	candidate_expiry_date DATE, 
+	candidate_packed_date DATE, 
+	best_before_text VARCHAR(255), 
+	batch_number_detected VARCHAR(100), 
+	mrp_detected NUMERIC(10, 2), 
+	date_parse_confidence NUMERIC(5, 4), 
+	response_json JSONB, 
+	ocr_status VARCHAR(30) DEFAULT 'PENDING' NOT NULL, 
+	failure_reason TEXT, 
+	processed_at TIMESTAMP WITH TIME ZONE, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(product_image_id) REFERENCES product_images (id) ON DELETE CASCADE, 
+	FOREIGN KEY(product_id) REFERENCES products (id) ON DELETE SET NULL, 
+	FOREIGN KEY(scan_session_id) REFERENCES scan_sessions (id) ON DELETE SET NULL, 
+	FOREIGN KEY(inventory_item_id) REFERENCES inventory_items (id) ON DELETE SET NULL
+);
+
+CREATE TABLE scan_alerts (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	scan_session_id UUID, 
+	inventory_item_id UUID, 
+	alert_type VARCHAR(100) NOT NULL, 
+	severity VARCHAR(50) DEFAULT 'WARNING' NOT NULL, 
+	field_name VARCHAR(100), 
+	message TEXT NOT NULL, 
+	is_resolved BOOLEAN DEFAULT false NOT NULL, 
+	resolved_by VARCHAR(150), 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	resolved_at TIMESTAMP WITH TIME ZONE, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(scan_session_id) REFERENCES scan_sessions (id) ON DELETE SET NULL, 
+	FOREIGN KEY(inventory_item_id) REFERENCES inventory_items (id) ON DELETE SET NULL
+);
+
+CREATE TABLE storage_contexts (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	inventory_item_id UUID NOT NULL, 
+	warehouse_id VARCHAR(100), 
+	zone VARCHAR(100), 
+	aisle VARCHAR(50), 
+	shelf VARCHAR(50), 
+	bin_location VARCHAR(100), 
+	storage_type VARCHAR(50), 
+	temperature_celsius FLOAT, 
+	humidity_percent FLOAT, 
+	notes TEXT, 
+	recorded_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	UNIQUE (inventory_item_id), 
+	FOREIGN KEY(inventory_item_id) REFERENCES inventory_items (id) ON DELETE CASCADE
+);
+
+CREATE TABLE manual_reviews (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	scan_session_id UUID, 
+	inventory_item_id UUID, 
+	ocr_result_id UUID, 
+	review_type VARCHAR(50) DEFAULT 'OCR_CORRECTION' NOT NULL, 
+	original_mfg_date DATE, 
+	original_expiry_date DATE, 
+	corrected_mfg_date DATE, 
+	corrected_expiry_date DATE, 
+	corrected_batch_number VARCHAR(100), 
+	corrected_description TEXT, 
+	reviewer_id VARCHAR(200), 
+	reviewer_name VARCHAR(150), 
+	reviewer_role VARCHAR(100), 
+	reviewer_note TEXT, 
+	human_decision VARCHAR(30), 
+	review_notes TEXT, 
+	escalation_reason TEXT, 
+	review_status VARCHAR(20) DEFAULT 'PENDING' NOT NULL, 
+	reviewed_at TIMESTAMP WITH TIME ZONE, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(scan_session_id) REFERENCES scan_sessions (id) ON DELETE SET NULL, 
+	FOREIGN KEY(inventory_item_id) REFERENCES inventory_items (id) ON DELETE CASCADE, 
+	FOREIGN KEY(ocr_result_id) REFERENCES ocr_results (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_audit_logs_action ON audit_logs (action);
+CREATE INDEX ix_audit_logs_entity_id ON audit_logs (entity_id);
+CREATE INDEX ix_audit_logs_event_type ON audit_logs (event_type);
+CREATE INDEX ix_audit_logs_id ON audit_logs (id);
+CREATE INDEX ix_audit_logs_occurred_at ON audit_logs (occurred_at);
+
+CREATE UNIQUE INDEX ix_products_barcode ON products (barcode);
+CREATE INDEX ix_products_id ON products (id);
+CREATE UNIQUE INDEX ix_products_sku ON products (sku);
+
+CREATE INDEX ix_scan_sessions_id ON scan_sessions (id);
+CREATE INDEX ix_scan_sessions_session_status ON scan_sessions (session_status);
+
+CREATE INDEX ix_suppliers_id ON suppliers (id);
+
+CREATE INDEX ix_warehouses_id ON warehouses (id);
+
+CREATE INDEX ix_barcode_scans_id ON barcode_scans (id);
+CREATE INDEX ix_barcode_scans_scan_session_id ON barcode_scans (scan_session_id);
+
+CREATE INDEX ix_external_product_enrichment_logs_barcode_value ON external_product_enrichment_logs (barcode_value);
+CREATE INDEX ix_external_product_enrichment_logs_id ON external_product_enrichment_logs (id);
+CREATE INDEX ix_external_product_enrichment_logs_product_id ON external_product_enrichment_logs (product_id);
+CREATE INDEX ix_external_product_enrichment_logs_response_status ON external_product_enrichment_logs (response_status);
+
+CREATE INDEX ix_product_allergens_allergen_name ON product_allergens (allergen_name);
+CREATE INDEX ix_product_allergens_id ON product_allergens (id);
+CREATE INDEX ix_product_allergens_product_id ON product_allergens (product_id);
+
+CREATE INDEX ix_product_identifiers_id ON product_identifiers (id);
+CREATE INDEX ix_product_identifiers_identifier_value ON product_identifiers (identifier_value);
+CREATE INDEX ix_product_identifiers_product_id ON product_identifiers (product_id);
+
+CREATE INDEX ix_product_images_id ON product_images (id);
+CREATE INDEX ix_product_images_scan_session_id ON product_images (scan_session_id);
+
+CREATE INDEX ix_product_ingredients_id ON product_ingredients (id);
+CREATE INDEX ix_product_ingredients_ingredient_name ON product_ingredients (ingredient_name);
+CREATE INDEX ix_product_ingredients_product_id ON product_ingredients (product_id);
+
+CREATE INDEX ix_product_nutrition_id ON product_nutrition (id);
+CREATE UNIQUE INDEX ix_product_nutrition_product_id ON product_nutrition (product_id);
+
+CREATE INDEX ix_product_storage_requirements_id ON product_storage_requirements (id);
+CREATE INDEX ix_product_storage_requirements_product_id ON product_storage_requirements (product_id);
+
+CREATE INDEX ix_storage_locations_id ON storage_locations (id);
+CREATE INDEX ix_storage_locations_location_code ON storage_locations (location_code);
+CREATE INDEX ix_storage_locations_warehouse_id ON storage_locations (warehouse_id);
+
+ALTER TABLE inventory_items ADD CONSTRAINT fk_inventory_items_ocr_result_id FOREIGN KEY(ocr_result_id) REFERENCES ocr_results (id) ON DELETE SET NULL;
+CREATE INDEX ix_inventory_items_batch_number ON inventory_items (batch_number);
+CREATE INDEX ix_inventory_items_id ON inventory_items (id);
+CREATE INDEX ix_inventory_items_intake_status ON inventory_items (intake_status);
+CREATE INDEX ix_inventory_items_ocr_result_id ON inventory_items (ocr_result_id);
+CREATE INDEX ix_inventory_items_pipeline_status ON inventory_items (pipeline_status);
+CREATE INDEX ix_inventory_items_scan_session_id ON inventory_items (scan_session_id);
+CREATE INDEX ix_inventory_items_storage_location_id ON inventory_items (storage_location_id);
+CREATE INDEX ix_inventory_items_supplier_id ON inventory_items (supplier_id);
+CREATE INDEX ix_inventory_items_warehouse_id ON inventory_items (warehouse_id);
+
+CREATE INDEX ix_inventory_movements_id ON inventory_movements (id);
+CREATE INDEX ix_inventory_movements_inventory_item_id ON inventory_movements (inventory_item_id);
+CREATE INDEX ix_inventory_movements_movement_type ON inventory_movements (movement_type);
+
+CREATE INDEX ix_ml_predictions_id ON ml_predictions (id);
+CREATE INDEX ix_ml_predictions_inventory_item_id ON ml_predictions (inventory_item_id);
+CREATE INDEX ix_ml_predictions_predicted_decision ON ml_predictions (predicted_decision);
+
+CREATE INDEX ix_ocr_results_id ON ocr_results (id);
+CREATE INDEX ix_ocr_results_product_id ON ocr_results (product_id);
+CREATE INDEX ix_ocr_results_scan_session_id ON ocr_results (scan_session_id);
+
+CREATE INDEX ix_scan_alerts_alert_type ON scan_alerts (alert_type);
+CREATE INDEX ix_scan_alerts_id ON scan_alerts (id);
+CREATE INDEX ix_scan_alerts_inventory_item_id ON scan_alerts (inventory_item_id);
+CREATE INDEX ix_scan_alerts_is_resolved ON scan_alerts (is_resolved);
+CREATE INDEX ix_scan_alerts_scan_session_id ON scan_alerts (scan_session_id);
+CREATE INDEX ix_scan_alerts_severity ON scan_alerts (severity);
+
+CREATE INDEX ix_storage_contexts_id ON storage_contexts (id);
+
+CREATE INDEX ix_manual_reviews_human_decision ON manual_reviews (human_decision);
+CREATE INDEX ix_manual_reviews_id ON manual_reviews (id);
+CREATE INDEX ix_manual_reviews_inventory_item_id ON manual_reviews (inventory_item_id);
+CREATE INDEX ix_manual_reviews_ocr_result_id ON manual_reviews (ocr_result_id);
+CREATE INDEX ix_manual_reviews_review_status ON manual_reviews (review_status);
+CREATE INDEX ix_manual_reviews_scan_session_id ON manual_reviews (scan_session_id);
+

@@ -37,5 +37,6 @@ def check_db_connection() -> bool:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         return True
-    except Exception:
+    except Exception as e:
+        print(f"check_db_connection error: {e}")
         return False
