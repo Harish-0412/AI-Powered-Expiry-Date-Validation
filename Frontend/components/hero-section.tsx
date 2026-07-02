@@ -1,13 +1,9 @@
 "use client"
 
-import { Button } from "@/components/ui/button"
-import RotatingText from "./RotatingText"
-<<<<<<< HEAD
-import AuthWelcome from "./auth-welcome"
-=======
-import { useAuth } from "@/contexts/AuthContext"
 import { useRouter } from "next/navigation"
->>>>>>> 0f02161 (Update project for Harish branch)
+import RotatingText from "./RotatingText"
+import { Button } from "@/components/ui/button"
+import { useAuth } from "@/contexts/AuthContext"
 
 const ArrowRight = () => (
   <svg
@@ -39,16 +35,15 @@ const Play = () => (
 export function HeroSection() {
   const { user } = useAuth()
   const router = useRouter()
+
   return (
     <section className="min-h-screen flex items-center justify-center px-4 py-20 relative">
       <div className="max-w-4xl mx-auto text-center relative z-10 animate-fade-in-hero">
-        {/* Badge */}
         <div className="inline-flex items-center px-4 py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-white text-sm font-medium mb-8 mt-12 animate-fade-in-badge">
           <span className="w-2 h-2 bg-white/60 rounded-full mr-2 animate-pulse"></span>
           AI-Powered Inventory Quality Control
         </div>
 
-        {/* Main Heading */}
         <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold text-balance mb-6 animate-fade-in-heading">
           <span className="text-foreground">Eliminate</span>
           <br />
@@ -57,7 +52,7 @@ export function HeroSection() {
             <RotatingText
               texts={["Products", "Waste", "Losses", "Risk", "Damage"]}
               mainClassName="px-2 sm:px-2 md:px-3 bg-white text-black overflow-hidden py-1 sm:py-1 md:py-2 justify-center rounded-lg shadow-lg"
-              staggerFrom={"last"}
+              staggerFrom="last"
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "-120%" }}
@@ -69,35 +64,11 @@ export function HeroSection() {
           </span>
         </h1>
 
-        {/* Subheading */}
         <p className="text-base sm:text-xl md:text-2xl text-white text-balance max-w-sm sm:max-w-3xl mx-auto mb-8 sm:mb-12 leading-relaxed px-4 sm:px-0 animate-fade-in-subheading font-light">
-          Automated inventory validation platform that identifies products, verifies expiry information, calculates remaining shelf life, and makes intelligent inventory decisions in real time.
+          Automated inventory validation platform that identifies products, verifies expiry information, calculates
+          remaining shelf life, and makes intelligent inventory decisions in real time.
         </p>
 
-<<<<<<< HEAD
-        <div className="flex flex-col items-center space-y-6 mb-8 animate-fade-in-buttons">
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full max-w-2xl">
-            <Button
-              size="lg"
-              className="bg-white text-black rounded-full px-8 py-4 text-lg font-medium transition-all duration-300 hover:bg-gray-50 hover:scale-105 hover:shadow-lg group cursor-pointer relative overflow-hidden"
-            >
-              Get Started
-              <ArrowRight />
-            </Button>
-
-            <Button
-              asChild
-              variant="outline"
-              size="lg"
-              className="rounded-full px-8 py-4 text-lg font-medium border-border hover:bg-accent transition-all duration-200 hover:scale-105 group bg-transparent cursor-pointer"
-            >
-              <a href="/signup" className="flex items-center gap-2">
-                Sign Up
-              </a>
-            </Button>
-          </div>
-=======
-        {/* CTA Buttons */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8 sm:mb-16 animate-fade-in-buttons">
           <Button
             size="lg"
@@ -107,7 +78,6 @@ export function HeroSection() {
             Get Started
             <ArrowRight />
           </Button>
->>>>>>> 0f02161 (Update project for Harish branch)
 
           <Button
             variant="outline"
@@ -119,7 +89,6 @@ export function HeroSection() {
           </Button>
         </div>
 
-        {/* Trust Indicators */}
         <div className="text-center px-4 hidden sm:block overflow-hidden animate-fade-in-trust">
           <p className="text-sm text-white mb-6">Trusted by leading food & beverage warehouses</p>
           <div className="relative overflow-hidden w-full max-w-4xl mx-auto">
@@ -132,7 +101,6 @@ export function HeroSection() {
                 <div className="text-base sm:text-lg font-semibold">WarehouseX</div>
                 <div className="text-base sm:text-lg font-semibold">FreshFlow</div>
               </div>
-              {/* Duplicate for seamless loop */}
               <div className="flex items-center gap-8 whitespace-nowrap">
                 <div className="text-base sm:text-lg font-semibold">FreshMart</div>
                 <div className="text-base sm:text-lg font-semibold">ProduceHub</div>
@@ -145,13 +113,10 @@ export function HeroSection() {
           </div>
         </div>
 
-        {/* Mobile Trust Indicators */}
         <div className="text-center px-4 mb-8 sm:hidden overflow-hidden animate-fade-in-trust">
           <p className="text-sm text-white mb-6">Trusted by leading food & beverage warehouses</p>
           <div className="relative overflow-hidden w-full max-w-sm mx-auto">
-            {/* Left blur fade */}
             <div className="absolute left-0 top-0 w-8 h-full bg-gradient-to-r from-black to-transparent z-10 pointer-events-none"></div>
-            {/* Right blur fade */}
             <div className="absolute right-0 top-0 w-8 h-full bg-gradient-to-l from-black to-transparent z-10 pointer-events-none"></div>
             <div className="flex items-center gap-6 opacity-60 animate-slide-left-mobile">
               <div className="flex items-center gap-6 whitespace-nowrap">
@@ -162,7 +127,6 @@ export function HeroSection() {
                 <div className="text-sm font-semibold">WarehouseX</div>
                 <div className="text-sm font-semibold">FreshFlow</div>
               </div>
-              {/* Duplicate for seamless loop */}
               <div className="flex items-center gap-6 whitespace-nowrap">
                 <div className="text-sm font-semibold">FreshMart</div>
                 <div className="text-sm font-semibold">ProduceHub</div>

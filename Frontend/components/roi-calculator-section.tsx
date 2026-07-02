@@ -7,14 +7,18 @@ import { Card } from "@/components/ui/card"
 import { TrendingUp, Users, DollarSign, Clock } from "lucide-react"
 
 interface CalculatorInputs {
+  businessType: BusinessType
   dailyProductsReceived: number
   currentErrorRate: number
   avgProductValue: number
   wastePercentage: number
 }
 
+type BusinessType = "food_retail" | "beverage" | "pharma" | "logistics"
+
 export function ROICalculatorSection() {
   const [inputs, setInputs] = useState<CalculatorInputs>({
+    businessType: "food_retail",
     dailyProductsReceived: 500,
     currentErrorRate: 8,
     avgProductValue: 200,
@@ -118,7 +122,7 @@ export function ROICalculatorSection() {
                   <label className="block text-sm font-medium text-gray-300 mb-3">Warehouse Type</label>
                   <Select
                     value={inputs.businessType}
-                    onValueChange={(value) => setInputs((prev) => ({ ...prev, businessType: value }))}
+                    onValueChange={(value) => setInputs((prev) => ({ ...prev, businessType: value as BusinessType }))}
                   >
                     <SelectTrigger className="bg-gray-700/50 border-gray-600 text-white">
                       <SelectValue />

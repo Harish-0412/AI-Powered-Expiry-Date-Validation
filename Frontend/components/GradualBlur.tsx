@@ -130,7 +130,7 @@ function GradualBlur(props) {
 
       let blurValue
       if (config.exponential) {
-        blurValue = math.pow(2, progress * 4) * 0.0625 * currentStrength
+        blurValue = Number(math.pow(2, progress * 4)) * 0.0625 * currentStrength
       } else {
         blurValue = 0.0625 * (progress * config.divCount + 1) * currentStrength
       }
@@ -146,7 +146,7 @@ function GradualBlur(props) {
 
       const direction = getGradientDirection(config.position)
 
-      const divStyle = {
+      const divStyle: React.CSSProperties = {
         position: "absolute",
         inset: "0",
         maskImage: `linear-gradient(${direction}, ${gradient})`,
@@ -229,7 +229,10 @@ function GradualBlur(props) {
   )
 }
 
-const GradualBlurMemo = React.memo(GradualBlur)
+const GradualBlurMemo = React.memo(GradualBlur) as React.MemoExoticComponent<typeof GradualBlur> & {
+  PRESETS: typeof PRESETS
+  CURVE_FUNCTIONS: typeof CURVE_FUNCTIONS
+}
 GradualBlurMemo.displayName = "GradualBlur"
 GradualBlurMemo.PRESETS = PRESETS
 GradualBlurMemo.CURVE_FUNCTIONS = CURVE_FUNCTIONS
