@@ -28,5 +28,4 @@ COPY . .
 EXPOSE 8000
 EXPOSE 8050
 
-RUN chmod +x start.sh
-CMD ["./start.sh"]
+CMD python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 & python dev_tools/web_scanner.py

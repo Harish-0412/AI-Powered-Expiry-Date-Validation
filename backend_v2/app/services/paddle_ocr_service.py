@@ -30,7 +30,7 @@ def _get_reader():
         # Try new PaddleOCR (PaddleX style) arguments: device='cpu', enable_mkldnn=False
         try:
             _reader = PaddleOCR(
-                use_textline_orientation=True,
+                use_textline_orientation=False,
                 lang='en',
                 device='cpu',
                 enable_mkldnn=False

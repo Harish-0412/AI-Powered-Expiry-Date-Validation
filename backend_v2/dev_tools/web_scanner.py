@@ -614,7 +614,11 @@ async def scan_images(files: List[UploadFile] = File(...)):
                         ocr_engine="PaddleOCR",
                         ocr_status="completed",
                         overall_confidence=final_confidence,
-                        extracted_text_blocks=extracted_blocks
+                        extracted_text_blocks=extracted_blocks,
+                        detected_mfg_text=final_mfg,
+                        detected_expiry_text=final_exp,
+                        detected_ingredients_text=final_ingredients,
+                        date_parse_confidence=final_confidence
                     )
                     db.add(db_ocr)
                     db.commit()
