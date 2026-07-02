@@ -130,7 +130,7 @@ def log_audit_event(
         return None
 
 
-def process_ocr_result(ocr_result: dict) -> dict:
+def process_ocr_result(ocr_result: dict, *args, **kwargs) -> dict:
     """
     Shim function for Sprint 4 & dev_tools compatibility.
     Processes raw OCR text, runs date extraction, generates alerts, and returns the expected nested dict.

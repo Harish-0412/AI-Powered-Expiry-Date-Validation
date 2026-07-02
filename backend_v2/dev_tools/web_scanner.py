@@ -30,6 +30,12 @@ from app.services.enhanced_ocr_pipeline import EnhancedOCRPipeline
 from app.services.barcode_service import BarcodeService
 from app.services.barcode_intelligence_service import BarcodeIntelligenceService
 
+from app.database import SessionLocal
+from app.models.product import Product
+from app.models.inventory_item import InventoryItem
+from app.models.product_image import ProductImage
+from app.models.ocr_result import OCRResult
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -327,9 +333,9 @@ def extract_fields_from_ocr_boxes(ocr_boxes: list) -> dict:
     return fields
 
 
-def run_easyocr_once(image: np.ndarray) -> Tuple[list, str]:
+def run_paddleocr_once(image: np.ndarray) -> Tuple[list, str]:
     """
-    Run EasyOCR ONCE on the image. Returns:
+    Run PaddleOCR ONCE on the image. Returns:
     - list of classified boxes (text, confidence, field_type, box)
     - concatenated raw text
     """
@@ -337,24 +343,51 @@ def run_easyocr_once(image: np.ndarray) -> Tuple[list, str]:
     raw_texts = []
     
     try:
-        import easyocr
-        reader = easyocr.Reader(['en'], gpu=False, verbose=False)
-        results = reader.readtext(image)
+        from app.services.paddle_ocr_service import _get_reader
+        ocr = _get_reader()
         
-        for (box, text, conf) in results:
-            if not text.strip() or conf < 0.15:
-                continue
-            field_type = classify_box(text)
-            ocr_boxes.append({
-                'text': text.strip(),
-                'confidence': round(conf, 3),
-                'field_type': field_type or 'TEXT',
-                'box': [[int(p[0]), int(p[1])] for p in box],
-            })
-            raw_texts.append(text.strip())
+        try:
+            results = ocr.ocr(image, cls=True)
+        except TypeError:
+            results = ocr.ocr(image)
+            
+        if results and results[0]:
+            first_page = results[0]
+            if isinstance(first_page, dict):
+                rec_texts = first_page.get("rec_texts", [])
+                rec_scores = first_page.get("rec_scores", [])
+                rec_polys = first_page.get("rec_polys", [])
+                for text, conf, poly in zip(rec_texts, rec_scores, rec_polys):
+                    if text and text.strip():
+                        field_type = classify_box(text)
+                        box_coords = [[int(p[0]), int(p[1])] for p in poly] if poly is not None else [[0, 0], [0, 0], [0, 0], [0, 0]]
+                        ocr_boxes.append({
+                            'text': text.strip(),
+                            'confidence': round(float(conf), 3),
+                            'field_type': field_type or 'TEXT',
+                            'box': box_coords,
+                        })
+                        raw_texts.append(text.strip())
+            elif isinstance(first_page, list):
+                for line in first_page:
+                    if line and len(line) >= 2:
+                        poly = line[0]
+                        text_info = line[1]
+                        if isinstance(text_info, tuple) and len(text_info) >= 2:
+                            text, conf = text_info
+                            if text and text.strip():
+                                field_type = classify_box(text)
+                                box_coords = [[int(p[0]), int(p[1])] for p in poly]
+                                ocr_boxes.append({
+                                    'text': text.strip(),
+                                    'confidence': round(float(conf), 3),
+                                    'field_type': field_type or 'TEXT',
+                                    'box': box_coords,
+                                })
+                                raw_texts.append(text.strip())
     except Exception as e:
-        logger.error(f"EasyOCR failed: {e}")
-    
+        logger.error(f"PaddleOCR run failed: {e}")
+        
     return ocr_boxes, '\n'.join(raw_texts)
 
 
@@ -403,6 +436,7 @@ async def scan_images(files: List[UploadFile] = File(...)):
         raise HTTPException(status_code=400, detail="Maximum 5 files can be uploaded at once")
     
     results = []
+    db = SessionLocal()
     
     for file in files:
         filename = file.filename
@@ -434,9 +468,9 @@ async def scan_images(files: List[UploadFile] = File(...)):
                 except Exception as e:
                     logger.warning(f"Barcode parsing failed: {e}")
             
-            # ── Step 2: Run EasyOCR ONCE (for both annotation + extraction)
-            ocr_boxes, raw_text = run_easyocr_once(frame)
-            logger.info(f"EasyOCR detected {len(ocr_boxes)} text boxes")
+            # ── Step 2: Run PaddleOCR ONCE (for both annotation + extraction)
+            ocr_boxes, raw_text = run_paddleocr_once(frame)
+            logger.info(f"PaddleOCR detected {len(ocr_boxes)} text boxes")
             
             # ── Step 3: Smart field extraction from OCR boxes ──────────────
             local_fields = extract_fields_from_ocr_boxes(ocr_boxes)
@@ -520,6 +554,75 @@ async def scan_images(files: List[UploadFile] = File(...)):
             
             success = bool(final_mfg or final_exp or final_product or final_mrp)
             
+            # ── Save to Docker PostgreSQL Database ───────────────────
+            try:
+                product = None
+                if barcode_val:
+                    product = db.query(Product).filter(Product.barcode == barcode_val).first()
+                if not product and final_product:
+                    product = db.query(Product).filter(Product.name.ilike(f"%{final_product}%")).first()
+                if not product:
+                    product = db.query(Product).first()
+
+                if product:
+                    # Save image to disk
+                    import uuid
+                    upload_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../uploads/labels"))
+                    os.makedirs(upload_dir, exist_ok=True)
+                    unique_filename = f"{uuid.uuid4()}_{filename}"
+                    saved_image_path = os.path.join(upload_dir, unique_filename)
+                    with open(saved_image_path, "wb") as f:
+                        f.write(contents)
+
+                    db_image = ProductImage(
+                        product_id=product.id,
+                        file_path=os.path.relpath(saved_image_path, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))),
+                        mime_type=file.content_type,
+                        processing_status="completed"
+                    )
+                    db.add(db_image)
+                    db.commit()
+                    db.refresh(db_image)
+
+                    # Create InventoryItem
+                    db_item = InventoryItem(
+                        product_id=product.id,
+                        batch_number=final_batch,
+                        manufacturing_date=mfg_date_obj,
+                        expiry_date=exp_date_obj,
+                        pipeline_status="OCR_COMPLETED" if success else "MANUAL_REVIEW",
+                        quantity=1,
+                        unit="units"
+                    )
+                    db.add(db_item)
+                    db.commit()
+                    db.refresh(db_item)
+
+                    # Create OCRResult
+                    extracted_blocks = []
+                    if final_mfg:
+                        extracted_blocks.append({"label": "MFG", "value": final_mfg})
+                    if final_exp:
+                        extracted_blocks.append({"label": "EXP", "value": final_exp})
+                    if final_batch:
+                        extracted_blocks.append({"label": "BATCH", "value": final_batch})
+
+                    db_ocr = OCRResult(
+                        product_image_id=db_image.id,
+                        inventory_item_id=db_item.id,
+                        raw_text=raw_text,
+                        ocr_engine="PaddleOCR",
+                        ocr_status="completed",
+                        overall_confidence=final_confidence,
+                        extracted_text_blocks=extracted_blocks
+                    )
+                    db.add(db_ocr)
+                    db.commit()
+                    logger.info(f"Successfully saved scan result to database: Inventory ID {db_item.id}")
+            except Exception as db_err:
+                db.rollback()
+                logger.error(f"Failed to write scan to database: {db_err}")
+
             results.append(ScanResult(
                 filename=filename,
                 product_name=final_product or "Unknown Product",
@@ -542,11 +645,10 @@ async def scan_images(files: List[UploadFile] = File(...)):
                 annotated_image_b64=annotated_b64,
                 raw_ocr_text=raw_text if raw_text else None,
             ))
-            
         except Exception as e:
             logger.error(f"Error processing {filename}: {e}", exc_info=True)
             results.append(ScanResult(filename=filename, error=str(e)))
-    
+    db.close()
     return results
 
 
@@ -728,4 +830,4 @@ def get_home_page():
     return html_content
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8050)
+    uvicorn.run(app, host="0.0.0.0", port=8050)

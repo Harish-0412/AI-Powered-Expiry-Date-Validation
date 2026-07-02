@@ -14,12 +14,15 @@ def trigger_ocr_processing(
     db: Session,
     product_image_id: Any,
     inventory_item_id: Optional[Any] = None,
-    ocr_engine: str = "mock-vision-v2",
+    ocr_engine: str = "PaddleOCR",
 ) -> OCRResult:
     """
     Kicks off OCR extraction workflow for a specific product image.
     Updates ProductImage.processing_status to ocr_pending.
     Creates and returns a pending OCRResult record.
+    NOW INTEGRATED: Runs the enhanced OCR pipeline using PaddleOCR,
+    extracts dates and batch information, updates the inventory item,
+    and handles success/failure states.
     """
     image = db.query(ProductImage).filter(ProductImage.id == product_image_id).first()
     if not image:
@@ -37,6 +40,97 @@ def trigger_ocr_processing(
     )
     db.add(ocr_record)
     db.commit()
+    db.refresh(ocr_record)
+
+    # ── INTEGRATION OF OCR EXTRACTION AND STORAGE ────────────────────────────────
+    try:
+        import os
+        import cv2
+        from app.services.enhanced_ocr_pipeline import EnhancedOCRPipeline
+        
+        file_path = image.file_path
+        if not file_path:
+            raise ValueError("No file path specified for the product image")
+            
+        # Resolve absolute path
+        if not os.path.isabs(file_path):
+            file_path = os.path.abspath(file_path)
+            
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Product image file not found at: {file_path}")
+            
+        img = cv2.imread(file_path)
+        if img is None:
+            raise ValueError(f"Failed to read image file from disk: {file_path}")
+            
+        pipeline = EnhancedOCRPipeline()
+        pipeline_result = pipeline.process_image(img, file_path)
+        
+        # Prepare text blocks
+        extracted_text_blocks = []
+        if pipeline_result.mfg_date:
+            extracted_text_blocks.append({"label": "MFG", "value": pipeline_result.mfg_date})
+        if pipeline_result.expiry_date:
+            extracted_text_blocks.append({"label": "EXP", "value": pipeline_result.expiry_date})
+        if pipeline_result.batch_number:
+            extracted_text_blocks.append({"label": "BATCH", "value": pipeline_result.batch_number})
+            
+        complete_ocr_processing(
+            db=db,
+            ocr_record_id=ocr_record.id,
+            raw_text=pipeline_result.raw_text,
+            extracted_text_blocks=extracted_text_blocks,
+            overall_confidence=pipeline_result.confidence,
+            ocr_engine_version="1.0"
+        )
+        
+        # Update associated inventory item if present
+        if inventory_item_id:
+            item = db.query(InventoryItem).filter(InventoryItem.id == inventory_item_id).first()
+            if item:
+                from datetime import datetime
+                
+                # Helper to parse YYYY-MM-DD
+                def parse_date(date_str: Optional[str]):
+                    if not date_str:
+                        return None
+                    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y"):
+                        try:
+                            return datetime.strptime(date_str, fmt).date()
+                        except ValueError:
+                            pass
+                    return None
+                    
+                mfg_date_obj = parse_date(pipeline_result.mfg_date)
+                exp_date_obj = parse_date(pipeline_result.expiry_date)
+                
+                if mfg_date_obj:
+                    item.manufacturing_date = mfg_date_obj
+                    item.date_source = "ocr_vision"
+                if exp_date_obj:
+                    item.expiry_date = exp_date_obj
+                    item.date_source = "ocr_vision"
+                if pipeline_result.batch_number and not item.batch_number:
+                    item.batch_number = pipeline_result.batch_number
+                    
+                # Run safety alerts check to determine status (MANUAL_REVIEW vs OCR_COMPLETED)
+                if mfg_date_obj and exp_date_obj and exp_date_obj < mfg_date_obj:
+                    item.pipeline_status = "MANUAL_REVIEW"
+                    item.status_reason = "Date sequence alert: Expiry date is before manufacturing date."
+                elif exp_date_obj and exp_date_obj < datetime.now().date():
+                    item.pipeline_status = "MANUAL_REVIEW"
+                    item.status_reason = f"Product is expired (Expiry date: {exp_date_obj})."
+                elif pipeline_result.confidence < 0.5:
+                    item.pipeline_status = "MANUAL_REVIEW"
+                    item.status_reason = f"Low OCR extraction confidence: {pipeline_result.confidence:.2f}"
+                else:
+                    item.pipeline_status = "OCR_COMPLETED"
+                    
+                db.commit()
+                
+    except Exception as e:
+        fail_ocr_processing(db=db, ocr_record_id=ocr_record.id, failure_reason=str(e))
+        
     db.refresh(ocr_record)
     return ocr_record
 

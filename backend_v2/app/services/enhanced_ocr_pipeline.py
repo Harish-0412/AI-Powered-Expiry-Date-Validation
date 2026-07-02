@@ -202,56 +202,51 @@ class EnhancedOCRPipeline:
         return None
     
     def _extract_text_from_view(self, image: np.ndarray) -> Optional[Dict]:
-        """Extract text from a single image view using available OCR engines"""
-        # Try EasyOCR first (usually available)
+        """Extract text from a single image view using PaddleOCR"""
         try:
-            reader = self._get_easyocr_reader()
-            if reader:
-                results = reader.readtext(image)
-                
-                if results:
-                    texts = []
-                    confidences = []
-                    for box, text, conf in results:
-                        if text.strip():
-                            texts.append(text.strip())
-                            confidences.append(conf)
-                    
-                    if texts:
-                        return {
-                            'raw_text': '\n'.join(texts),
-                            'confidence': sum(confidences) / len(confidences) if confidences else 0.0,
-                            'line_count': len(texts)
-                        }
-        except Exception as e:
-            logger.debug(f"EasyOCR failed: {e}")
-        
-        # Try PaddleOCR as alternative
-        try:
-            from paddleocr import PaddleOCR
-            ocr = PaddleOCR(use_angle_cls=True, lang='en', show_log=False)
-            result = ocr.ocr(image, cls=True)
+            from app.services.paddle_ocr_service import _get_reader
+            ocr = _get_reader()
             
-            if result and result[0]:
-                texts = []
-                confidences = []
-                for line in result[0]:
+            # Run OCR. Some versions of PaddleOCR/PaddleX don't accept the 'cls' parameter during prediction.
+            try:
+                results = ocr.ocr(image, cls=True)
+            except TypeError:
+                results = ocr.ocr(image)
+
+            if not results or not results[0]:
+                return None
+
+            texts: list[str] = []
+            confidences: list[float] = []
+
+            # Handle the two different formats returned by PaddleOCR:
+            # 1. New/PaddleX format: a list containing a dict
+            # 2. Classic format: a list containing a list of lines
+            first_page = results[0]
+            if isinstance(first_page, dict):
+                rec_texts = first_page.get("rec_texts", [])
+                rec_scores = first_page.get("rec_scores", [])
+                for text, confidence in zip(rec_texts, rec_scores):
+                    if text and text.strip():
+                        texts.append(text.strip())
+                        confidences.append(float(confidence))
+            elif isinstance(first_page, list):
+                for line in first_page:
                     if line and len(line) >= 2:
-                        text_info = line[1]
-                        if isinstance(text_info, tuple) and len(text_info) >= 2:
-                            text, conf = text_info
-                            if text.strip():
-                                texts.append(text.strip())
-                                confidences.append(conf)
-                
-                if texts:
-                    return {
-                        'raw_text': '\n'.join(texts),
-                        'confidence': sum(confidences) / len(confidences) if confidences else 0.0,
-                        'line_count': len(texts)
-                    }
+                        box = line[0]
+                        text, confidence = line[1]
+                        if text and text.strip():
+                            texts.append(text.strip())
+                            confidences.append(float(confidence))
+
+            if texts:
+                return {
+                    'raw_text': '\n'.join(texts),
+                    'confidence': sum(confidences) / len(confidences) if confidences else 0.0,
+                    'line_count': len(texts)
+                }
         except Exception as e:
-            logger.debug(f"PaddleOCR failed: {e}")
+            logger.error(f"PaddleOCR extraction failed: {e}")
         
         return None
 

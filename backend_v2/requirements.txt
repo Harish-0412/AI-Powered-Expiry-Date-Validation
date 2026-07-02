@@ -1,13 +1,36 @@
+# ── Core API framework ────────────────────────────────────────
 fastapi==0.111.0
 uvicorn==0.29.0
-sqlalchemy==2.0.30
-psycopg2-binary==2.9.9
+python-multipart==0.0.9
 pydantic==2.7.1
 pydantic-settings==2.2.1
 python-dotenv==1.0.1
-python-multipart==0.0.9
+
+# ── Database (Member 2 — do not remove) ──────────────────────
+sqlalchemy==2.0.30
+psycopg2-binary==2.9.9
 alembic==1.13.1
+
+# ── Testing ───────────────────────────────────────────────────
 pytest==8.2.0
 httpx==0.27.0
 passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.3.0
+
+# ── Sprint 1: Camera & Barcode Detection (Member 1) ──────────
+opencv-python
+pyzbar
+zxing-cpp
+numpy
+Pillow
+
+# ── Sprint 3: OCR Extraction (Member 1) ──────────────────────
+paddleocr
+paddlepaddle
+python-dateutil
+regex
+
+# ── Vision LLM Integrations ───────────────────────────────────
+google-generativeai>=0.8.0
+openai>=1.0.0
+pylibdmtx>=0.1.10
