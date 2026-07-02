@@ -19,10 +19,11 @@ from app.models import (  # noqa: F401
     ProductNutrition, ProductStorageRequirement, Supplier, Warehouse,
     StorageLocation, ScanSession, BarcodeScan, ProductImage, OCRResult,
     InventoryItem, InventoryMovement, ManualReview, ScanAlert, AuditLog,
-    ExternalProductEnrichmentLog, StorageContext, MLPrediction,
+    ExternalProductEnrichmentLog, ExternalProductCache, ProductLookupLog,
+    UnknownProductRequest, ProductQuestionLog, StorageContext, MLPrediction,
 )
 from app.routes.auth import router as auth_router
-
+from app.routes import product_lookup_routes, product_question_routes
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -49,6 +50,8 @@ app.add_middleware(
 
 # Register routers
 app.include_router(auth_router)
+app.include_router(product_lookup_routes.router, prefix="/api/v1", tags=["Product Lookup"])
+app.include_router(product_question_routes.router, prefix="/api/v1", tags=["Product Questions"])
 
 
 @app.get("/health", tags=["health"])
